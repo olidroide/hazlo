@@ -1,0 +1,97 @@
+Hazlo Source-Available Ethical License 1.0 (HSEL-1.0)
+
+Copyright (c) 2026 Oliver Mas Otero
+
+
+PERMISSIONS
+
+Subject to the conditions below, you are granted the right to:
+
+- View and inspect the source code.
+- Clone, fork, and modify the source code.
+- Use the software for personal, educational, or research purposes.
+- Deploy and run the software for internal business purposes within your
+  own organization, provided you do not expose it as an external service.
+- Submit contributions, patches, or improvements, which will be subject
+  to this License unless otherwise agreed in writing.
+
+
+RESTRICTIONS
+
+1. Commercial Service Restriction
+
+   You may not offer the software or any derivative work as a commercial
+   service or product for payment to third parties (including, but not
+   limited to, hosted services, SaaS, or managed platforms) without
+   explicit prior written permission from the Licensor.
+
+2. Ethical Use Restrictions
+
+   The software must not be used, directly or indirectly, for:
+
+   a. Military operations, weapons systems, or defense applications,
+      including logistics, targeting, command and control systems, or
+      any operational support in armed conflict.
+
+   b. Intelligence operations or surveillance programs targeting
+      civilian populations.
+
+   c. Systems designed to repress freedom of expression, association,
+      assembly, due process, or other internationally recognized human
+      rights.
+
+   d. Projects that facilitate war crimes, crimes against humanity,
+      genocide, ethnic cleansing, forced displacement, or similar
+      serious violations of international humanitarian law.
+
+   These restrictions are perpetual and survive any future relicensing
+   of the software by the Licensor.
+
+
+CONTRIBUTIONS
+
+By submitting a contribution to this project, you grant the Licensor a
+perpetual, worldwide, non-exclusive, royalty-free license to use, copy,
+modify, and distribute your contribution under this License or any later
+version published by the Licensor.
+
+
+TERMINATION
+
+Any use of the software in violation of this License automatically
+terminates your rights under this License. The Licensor may reinstate
+your rights at their sole discretion.
+
+
+DISCLAIMER OF WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+FUTURE VERSIONS
+
+The Licensor may publish revised versions of this License. Each version
+will be given a distinguishing version number. Once a specific version
+of the software has been released under this License, the terms of that
+version apply to that release unless the Licensor explicitly designates
+a different version.
+
+No later version of this License may remove or weaken the Ethical Use
+Restrictions for previously licensed releases unless the Licensor
+explicitly states otherwise in writing for a specific release.
+
+
+COMMERCIAL LICENSING
+
+For commercial use or any use not covered by this License, contact the
+Licensor to discuss alternative licensing arrangements.
+
+The restrictions in this License apply to third parties only. They do not
+limit the Licensor's own commercial use, hosted offerings, advertising-
+supported deployments, or alternative licensing of the software.
