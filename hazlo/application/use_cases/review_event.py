@@ -3,7 +3,13 @@ from __future__ import annotations
 import uuid
 
 from hazlo.domain.event import Event, EventStatus
-from hazlo.domain.review import Review, ReviewAction
+from hazlo.domain.review import InvalidTransitionError, Review, ReviewAction
+
+VALID_ACTIONS: dict[str, EventStatus] = {
+    "approve": EventStatus.APPROVED,
+    "reject": EventStatus.REJECTED,
+    "publish": EventStatus.PUBLISHED,
+}
 
 
 class ReviewEvent:
@@ -12,27 +18,44 @@ class ReviewEvent:
         *,
         event: Event,
         reviewer_id: uuid.UUID,
-        title: str | None = None,
-        status: EventStatus,
+        action: str,
         changes: dict[str, object] | None = None,
     ) -> tuple[Event, Review]:
-        if title is not None:
-            event.title = title
+        target_status = VALID_ACTIONS.get(action)
 
-        event.status = status
-        event.updated_at = event.updated_at
+        if action == "edit":
+            if not event.can_transition_to(EventStatus.APPROVED) and not event.can_transition_to(EventStatus.REJECTED):
+                raise InvalidTransitionError(f"Cannot edit event in {event.status.value} status")
+            updated = event
+            if changes:
+                updated = event.with_changes(**changes)
+            before = event.to_dict()
+            after = updated.to_dict()
+            diff = Review.compute_diff(before, after)
+            review = Review(
+                event_id=event.id,
+                reviewer_id=reviewer_id,
+                action=ReviewAction.EDIT,
+                changes=diff,
+            )
+            return updated, review
 
-        action = ReviewAction.EDIT if title is not None else ReviewAction.APPROVE
-        if status == EventStatus.REJECTED:
-            action = ReviewAction.REJECT
-        elif status == EventStatus.APPROVED and title is None:
-            action = ReviewAction.APPROVE
+        if target_status is None:
+            msg = f"Invalid action: {action}"
+            raise ValueError(msg)
 
+        updated = event.with_status(target_status)
+        before = event.to_dict()
+        after = updated.to_dict()
+        if changes:
+            after.update(changes)
+        diff = Review.compute_diff(before, after)
+
+        review_action = ReviewAction.APPROVE if action in ("approve", "publish") else ReviewAction.REJECT
         review = Review(
             event_id=event.id,
             reviewer_id=reviewer_id,
-            action=action,
-            changes=changes or {},
+            action=review_action,
+            changes=diff,
         )
-
-        return event, review
+        return updated, review

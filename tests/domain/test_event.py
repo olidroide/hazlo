@@ -6,24 +6,41 @@ from decimal import Decimal
 
 from hazlo.domain.event import Event, EventStatus, Location, Price, TicketInfo
 
+_UNSET = object()
 
-def _make_event(**kwargs: object) -> Event:
-    defaults: dict[str, object] = {
-        "id": uuid.uuid4(),
-        "title": "Test Event",
-        "location": Location(address="Calle Mayor 1", neighborhood="Centro", metro="Sol"),
-        "start_at": datetime(2026, 6, 1, 20, 0, tzinfo=UTC),
-        "end_at": datetime(2026, 6, 1, 22, 0, tzinfo=UTC),
-        "price": Price(amount=Decimal("10.00"), is_free=False, notes=None),
-        "ticket_info": TicketInfo(url="https://tickets.example.com", notes=None),
-        "is_children_activity": False,
-        "is_toddler_friendly": False,
-        "source_url": "https://source.example.com/event",
-        "extracted_at": datetime(2026, 5, 16, 10, 0, tzinfo=UTC),
-        "status": EventStatus.PENDING,
-    }
-    defaults.update(kwargs)
-    return Event(**defaults)
+
+def _make_event(
+    id: uuid.UUID | None | object = _UNSET,
+    title: str = "Test Event",
+    location: Location | None | object = _UNSET,
+    start_at: datetime | None | object = _UNSET,
+    end_at: datetime | None | object = _UNSET,
+    price: Price | None | object = _UNSET,
+    ticket_info: TicketInfo | None | object = _UNSET,
+    is_children_activity: bool = False,
+    is_toddler_friendly: bool = False,
+    source_url: str = "https://source.example.com/event",
+    extracted_at: datetime | None | object = _UNSET,
+    status: EventStatus = EventStatus.PENDING,
+) -> Event:
+    return Event(
+        id=uuid.uuid4() if id is _UNSET else id,
+        title=title,
+        location=location
+        if location is not _UNSET
+        else Location(address="Calle Mayor 1", neighborhood="Centro", metro="Sol"),
+        start_at=start_at if start_at is not _UNSET else datetime(2026, 6, 1, 20, 0, tzinfo=UTC),
+        end_at=end_at if end_at is not _UNSET else datetime(2026, 6, 1, 22, 0, tzinfo=UTC),
+        price=price if price is not _UNSET else Price(amount=Decimal("10.00"), is_free=False, notes=None),
+        ticket_info=ticket_info
+        if ticket_info is not _UNSET
+        else TicketInfo(url="https://tickets.example.com", notes=None),
+        is_children_activity=is_children_activity,
+        is_toddler_friendly=is_toddler_friendly,
+        source_url=source_url,
+        extracted_at=extracted_at if extracted_at is not _UNSET else datetime(2026, 5, 16, 10, 0, tzinfo=UTC),
+        status=status,
+    )
 
 
 def test_event_requires_ticket_url_when_paid() -> None:

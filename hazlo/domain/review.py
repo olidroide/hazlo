@@ -12,6 +12,10 @@ class ReviewAction(Enum):
     EDIT = "edit"
 
 
+class InvalidTransitionError(Exception):
+    pass
+
+
 @dataclass
 class Review:
     id: uuid.UUID = field(default_factory=uuid.uuid4)
@@ -20,3 +24,14 @@ class Review:
     action: ReviewAction = ReviewAction.APPROVE
     changes: dict[str, object] = field(default_factory=dict)
     reviewed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    @staticmethod
+    def compute_diff(before: dict[str, object], after: dict[str, object]) -> dict[str, object]:
+        diff: dict[str, object] = {}
+        all_keys = set(before.keys()) | set(after.keys())
+        for key in all_keys:
+            before_val = before.get(key)
+            after_val = after.get(key)
+            if before_val != after_val:
+                diff[key] = {"before": before_val, "after": after_val}
+        return diff

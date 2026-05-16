@@ -13,7 +13,7 @@ class Settings(BaseSettings):
         strict=True,
     )
 
-    database_url: str = "postgresql+asyncpg://hazlo:hazlo@localhost:5432/hazlo"
+    database_url: str = "postgresql+asyncpg://hazlo:hazlo@localhost:5433/hazlo"
     hazlo_env: Literal["development", "production", "test"] = "development"
 
 

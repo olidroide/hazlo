@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -17,7 +17,7 @@ from hazlo.infrastructure.db.repositories import EventRepository
 
 
 @pytest.fixture(scope="session")
-def postgres_container() -> PostgresContainer:
+def postgres_container() -> Generator[PostgresContainer, None, None]:
     with PostgresContainer("postgres:16-alpine", driver="asyncpg") as postgres:
         yield postgres
 

@@ -16,6 +16,8 @@ Smart event agenda with human review and source administration panel.
 - [Source Administration Panel](#source-administration-panel)
 - [Human Review Flow](#human-review-flow)
 - [Getting Started](#getting-started)
+- [Running with Docker Compose](#running-with-docker-compose)
+- [Developer Workflow](#developer-workflow)
 - [Testing](#testing)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
@@ -40,6 +42,7 @@ visible to the public.
   - Verify their parsing.
   - Configure extraction frequency.
   - View last status (success/error) and extraction history.
+  - Trigger manual extractions on demand.
 - Event normalization to a common model, ready to be searched and filtered.
 - Human-in-the-loop review flow to approve/edit events before publishing.
 - Event classification:
@@ -48,6 +51,7 @@ visible to the public.
 - Traceability focus:
   - Record of when and from where each event was extracted.
   - Information on what changes were made during manual review.
+- Scheduled ingestion via Prefect (every 30 minutes by default).
 
 ---
 
@@ -60,15 +64,14 @@ hazlo follows **DDD & Clean Architecture** principles, clearly separating layers
   - Pure business logic (no framework dependencies).
 - **Application**
   - Use cases (application services) such as:
-    - `CreateEventFromSource`
+    - `IngestSource`
     - `ReviewEvent`
-    - `ScheduleSourceFetch`
   - Flow orchestration (ingestion → normalization → review → publishing).
 - **Infrastructure**
   - Repositories (async SQLAlchemy against PostgreSQL).
   - Source adapters (scrapers, HTTP clients, etc.).
   - HTTP API (FastAPI) and web layer (HTMX + Jinja2).
-  - Task queue / scheduler integration (when applicable).
+  - Prefect for scheduled task execution.
 
 This separation allows evolving the domain model and data sources without
 breaking the public interface.
@@ -86,6 +89,8 @@ breaking the public interface.
   - HTMX (progressive interactions, HATEOAS)
   - Jinja2 (templates)
   - Tailwind CSS (utility styles)
+- **Task scheduling**
+  - Prefect 3.x (flows, deployments, worker)
 - **Static typing & code quality**
   - ty (static type checker, strict mode)
   - Ruff (linter and formatter)
@@ -96,9 +101,8 @@ breaking the public interface.
   - pytest
   - Factory Boy
   - Testcontainers (PostgreSQL and other external services in Docker)
-- **Other (optional / recommended)**
-  - Docker / Docker Compose for development and deployment.
-  - Task queue for periodic ingestion tasks (e.g., RQ, Celery, etc.).
+- **Infrastructure**
+  - Docker / Docker Compose for Prefect server, worker, and PostgreSQL.
 
 ---
 
@@ -138,8 +142,9 @@ control over where data comes from and how it is processed:
 - Source list:
   - Source name.
   - Type (web scraping, API, CSV, etc.).
-  - Current status (active/inactive).
+  - Current status (active/inactive/running).
   - Last run and result (success/error).
+  - "Ejecutar ahora" button for on-demand extraction.
 - Source detail:
   - Parsing configuration.
   - Extraction frequency.
@@ -158,16 +163,19 @@ public agenda:
 
 1. **Ingestion**
    The system extracts data from configured sources and creates/updates events
-   in "pending review" status.
+   in "pending review" status. Runs every 30 minutes via Prefect, or manually
+   from the admin panel.
 2. **Review**
    A reviewer:
    - Verifies title, location, dates, price, and ticket link.
    - Completes or corrects information.
    - Marks whether it is a children's activity or toddler-friendly.
+   - Approves or rejects the event.
 3. **Publishing**
    Once approved, the event moves to "published" status and appears in the agenda.
 4. **Audit**
    Records who reviewed the event, what changes were made, and when.
+   Accessible via "Ver historial" on each event card.
 
 This flow allows automating ingestion while maintaining editorial control and
 data quality.
@@ -179,98 +187,113 @@ data quality.
 > Assumes a local development environment with PostgreSQL available.
 > Python and tools are managed by `mise` and `uv`.
 
+### Quick start (app only, external DB)
+
 1. **Install mise and uv (once per machine)**
 
    ```bash
-   # mise — dev tool & env manager
    curl https://mise.run | sh
-
-   # uv — Python package & project manager
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
-2. **Clone the repository**
+2. **Clone and setup**
 
    ```bash
    git clone https://github.com/<your-username>/hazlo.git
    cd hazlo
-   ```
-
-3. **Activate project tools with mise**
-
-   The `mise.toml` in the project root pins Python, `ruff`, `uv`, and other tools.
-
-   ```bash
    mise install
-   ```
-
-4. **Create the virtual environment and install dependencies**
-
-   ```bash
-   uv venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   uv venv && source .venv/bin/activate
    uv sync
    ```
 
-5. **Configure environment variables**
-
-   Create a `.env` file with at least:
+3. **Configure `.env`**
 
    ```env
-   DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/hazlo
-   HAZLO_ENV=dev
+   DATABASE_URL=postgresql+asyncpg://hazlo:hazlo@localhost:5433/hazlo
+   HAZLO_ENV=development
    ```
 
-6. **Apply migrations / initialize the database**
+4. **Run PostgreSQL** (if not already running)
 
    ```bash
-   alembic upgrade head
+   docker run -d --name hazlo-postgres \
+     -e POSTGRES_USER=hazlo -e POSTGRES_PASSWORD=hazlo -e POSTGRES_DB=hazlo \
+     -p 5433:5432 postgres:16-alpine
    ```
 
-7. **Start the application**
+5. **Migrate and start**
 
    ```bash
-   uv run fastapi dev hazlo/main.py
+   mise run migrate
+   mise run dev
    ```
 
-8. **Verify everything works**
+6. **Verify**
 
-   - API / web: http://127.0.0.1:8000
-   - Interactive docs (OpenAPI): http://127.0.0.1:8000/docs
-   - Event review / source panel: e.g. `/admin/sources`, `/admin/events`
+   - Admin panel: http://127.0.0.1:8000/admin/sources
+   - Event review: http://127.0.0.1:8000/admin/events?status=pending
+
+---
+
+## Running with Docker Compose
+
+For the full stack including Prefect server and worker:
+
+```bash
+# Start all infrastructure services (Postgres, Prefect server, worker, Redis)
+docker compose up -d
+
+# Wait for services to be healthy (Prefect takes ~60s to start)
+docker compose ps
+
+# Run migrations against the app database
+# (use your local .env pointing to the Docker Postgres or a separate one)
+mise run migrate
+
+# Start the FastAPI app
+mise run dev
+```
+
+### Prefect UI
+
+Once running, access the Prefect dashboard at:
+- http://localhost:4200
+
+### Deploy flows
+
+```bash
+mise run deploy-flows
+```
+
+This registers:
+- `ingest-all-sources` — runs every 30 minutes
+- `ingest-single-source` — triggered manually or via API
+
+### Prefect tasks
+
+```bash
+mise run prefect-server   # Start Prefect server locally
+mise run prefect-worker   # Start a worker for the default pool
+mise run deploy-flows     # Deploy flows to Prefect
+```
 
 ---
 
 ## Developer Workflow
 
-Common local commands using `mise` tasks and `uv`:
+Common local commands using `mise` tasks:
 
-- **Run the app in dev mode**
-
-  ```bash
-  mise run dev        # uv run fastapi dev hazlo/main.py
-  ```
-
-- **Run tests**
-
-  ```bash
-  mise run test       # uv run pytest
-  ```
-
-- **Type checking (ty)**
-
-  ```bash
-  mise run typecheck  # uv run ty check src
-  ```
-
-- **Lint & format (Ruff)**
-
-  ```bash
-  mise run lint       # uv run ruff check src
-  mise run fmt        # uv run ruff format src
-  ```
-
-Exact commands depend on your `mise.toml`, which defines the task shortcuts.
+| Task | Command | Description |
+|------|---------|-------------|
+| `dev` | `mise run dev` | Start FastAPI in dev mode |
+| `test` | `mise run test` | Run pytest |
+| `lint` | `mise run lint` | Run Ruff linter |
+| `fmt` | `mise run fmt` | Run Ruff formatter |
+| `typecheck` | `mise run typecheck` | Run ty type checker |
+| `migrate` | `mise run migrate` | Apply Alembic migrations |
+| `prefect-server` | `mise run prefect-server` | Start Prefect server |
+| `prefect-worker` | `mise run prefect-worker` | Start Prefect worker |
+| `deploy-flows` | `mise run deploy-flows` | Deploy Prefect flows |
 
 ---
 
@@ -279,16 +302,16 @@ Exact commands depend on your `mise.toml`, which defines the task shortcuts.
 Run the test suite:
 
 ```bash
-pytest
+mise run test
 ```
 
 Recommended practices:
 
-- **Domain tests**: use case coverage for event creation and updates; business
-  rules (e.g. date validation, required ticket link for paid events).
+- **Domain tests**: use case coverage for event creation, review, and ingestion;
+  business rules (e.g. date validation, required ticket link for paid events).
 - **Infrastructure tests**: repositories against PostgreSQL via Testcontainers;
   source adapters with mocked external responses.
-- **Integration / end-to-end tests**: full ingestion → review → publishing flows.
+- **Integration tests**: full ingestion → review → publishing flows.
 
 ---
 

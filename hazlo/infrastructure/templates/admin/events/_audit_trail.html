@@ -1,0 +1,62 @@
+<div id="audit-trail" class="space-y-4">
+    <h3 class="text-sm font-medium text-neutral-900 dark:text-white">Historial de revisiones</h3>
+    {% if reviews %}
+    <div class="flow-root">
+        <ul role="list" class="-mb-8">
+            {% for review in reviews %}
+            <li>
+                <div class="relative pb-8">
+                    {% if not loop.last %}
+                    <span class="absolute left-4 top-4 -ml-px h-full w-0.5 bg-neutral-200 dark:bg-neutral-700" aria-hidden="true"></span>
+                    {% endif %}
+                    <div class="relative flex space-x-3">
+                        <div>
+                            <span class="h-8 w-8 rounded-full flex items-center justify-center ring-8 ring-white dark:ring-neutral-800
+                                {% if review.action == 'approve' %}bg-green-500
+                                {% elif review.action == 'reject' %}bg-red-500
+                                {% else %}bg-blue-500{% endif %}">
+                                <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    {% if review.action == 'approve' %}
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                    {% elif review.action == 'reject' %}
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                    {% else %}
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                    {% endif %}
+                                </svg>
+                            </span>
+                        </div>
+                        <div class="flex min-w-0 flex-1 justify-between space-x-4 pt-1.5">
+                            <div>
+                                <p class="text-sm text-neutral-500 dark:text-neutral-400">
+                                    <span class="font-medium text-neutral-900 dark:text-white">
+                                        {{ review.action | capitalize }}
+                                    </span>
+                                </p>
+                                {% if review.changes %}
+                                <div class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                                    {% for field, change in review.changes.items() %}
+                                    <div>
+                                        <span class="font-medium">{{ field }}:</span>
+                                        <span class="line-through text-red-500">{{ change.before }}</span>
+                                        →
+                                        <span class="text-green-600">{{ change.after }}</span>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="whitespace-nowrap text-right text-xs text-neutral-500 dark:text-neutral-400">
+                                <time>{{ review.reviewed_at.strftime('%d/%m/%Y %H:%M') }}</time>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% else %}
+    <p class="text-sm text-neutral-500 dark:text-neutral-400">Sin revisiones registradas.</p>
+    {% endif %}
+</div>

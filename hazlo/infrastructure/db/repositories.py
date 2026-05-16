@@ -6,13 +6,18 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hazlo.domain.event import Event, EventStatus
+from hazlo.domain.review import Review
 from hazlo.domain.source import Source
 from hazlo.infrastructure.db.models import (
     EventModel,
+    ExtractionRunModel,
+    ReviewModel,
     SourceModel,
     event_to_model,
     model_to_event,
+    model_to_review,
     model_to_source,
+    review_to_model,
     source_to_model,
 )
 
@@ -67,6 +72,15 @@ class EventRepository:
         await self._session.commit()
         return model_to_event(model)
 
+    async def save_with_review(self, event: Event, review: Review) -> tuple[Event, Review]:
+        event_model = event_to_model(event)
+        review_model = review_to_model(review)
+        self._session.add(event_model)
+        self._session.add(review_model)
+        await self._session.commit()
+        await self._session.refresh(event_model)
+        return model_to_event(event_model), model_to_review(review_model)
+
 
 class SourceRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -105,3 +119,65 @@ class SourceRepository:
             return None
         await self._session.commit()
         return model_to_source(model)
+
+    async def toggle_active(self, source_id: uuid.UUID) -> Source | None:
+        from hazlo.infrastructure.db.models import _utcnow
+
+        stmt = (
+            update(SourceModel)
+            .where(SourceModel.id == source_id)
+            .values(
+                is_active=~SourceModel.is_active,
+                updated_at=_utcnow(),
+            )
+            .returning(SourceModel)
+        )
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        await self._session.commit()
+        return model_to_source(model)
+
+    async def get_extraction_history(
+        self,
+        source_id: uuid.UUID,
+        *,
+        limit: int = 20,
+    ) -> list[dict[str, object]]:
+        result = await self._session.execute(
+            select(ExtractionRunModel)
+            .where(ExtractionRunModel.source_id == source_id)
+            .order_by(ExtractionRunModel.started_at.desc())
+            .limit(limit)
+        )
+        runs = result.scalars().all()
+        return [
+            {
+                "id": r.id,
+                "started_at": r.started_at,
+                "finished_at": r.finished_at,
+                "status": r.status,
+                "events_found": r.events_found,
+                "errors": r.errors,
+            }
+            for r in runs
+        ]
+
+
+class ReviewRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def save(self, review: Review) -> Review:
+        model = review_to_model(review)
+        self._session.add(model)
+        await self._session.commit()
+        await self._session.refresh(model)
+        return model_to_review(model)
+
+    async def list_by_event(self, event_id: uuid.UUID) -> list[Review]:
+        result = await self._session.execute(
+            select(ReviewModel).where(ReviewModel.event_id == event_id).order_by(ReviewModel.reviewed_at.desc())
+        )
+        return [model_to_review(m) for m in result.scalars().all()]
