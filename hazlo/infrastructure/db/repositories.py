@@ -2,58 +2,106 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hazlo.infrastructure.db.models import EventModel, ExtractionRunModel, SourceModel
+from hazlo.domain.event import Event, EventStatus
+from hazlo.domain.source import Source
+from hazlo.infrastructure.db.models import (
+    EventModel,
+    SourceModel,
+    event_to_model,
+    model_to_event,
+    model_to_source,
+    source_to_model,
+)
 
 
 class EventRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def add(self, event: EventModel) -> EventModel:
-        self._session.add(event)
-        await self._session.commit()
-        await self._session.refresh(event)
-        return event
-
-    async def get_by_id(self, event_id: uuid.UUID) -> EventModel | None:
+    async def get(self, event_id: uuid.UUID) -> Event | None:
         result = await self._session.execute(select(EventModel).where(EventModel.id == event_id))
-        return result.scalar_one_or_none()
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        return model_to_event(model)
 
-    async def list_all(self, *, limit: int = 50, offset: int = 0) -> list[EventModel]:
+    async def list_by_status(
+        self,
+        status: EventStatus,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Event]:
         result = await self._session.execute(
-            select(EventModel).order_by(EventModel.created_at.desc()).limit(limit).offset(offset)
+            select(EventModel)
+            .where(EventModel.status == status.value)
+            .order_by(EventModel.created_at.desc())
+            .limit(limit)
+            .offset(offset)
         )
-        return list(result.scalars().all())
+        return [model_to_event(m) for m in result.scalars().all()]
+
+    async def save(self, event: Event) -> Event:
+        model = event_to_model(event)
+        self._session.add(model)
+        await self._session.commit()
+        await self._session.refresh(model)
+        return model_to_event(model)
+
+    async def update_status(self, event_id: uuid.UUID, status: EventStatus) -> Event | None:
+        from hazlo.infrastructure.db.models import _utcnow
+
+        stmt = (
+            update(EventModel)
+            .where(EventModel.id == event_id)
+            .values(status=status.value, updated_at=_utcnow())
+            .returning(EventModel)
+        )
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        await self._session.commit()
+        return model_to_event(model)
 
 
 class SourceRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def add(self, source: SourceModel) -> SourceModel:
-        self._session.add(source)
-        await self._session.commit()
-        await self._session.refresh(source)
-        return source
-
-    async def get_by_id(self, source_id: uuid.UUID) -> SourceModel | None:
+    async def get(self, source_id: uuid.UUID) -> Source | None:
         result = await self._session.execute(select(SourceModel).where(SourceModel.id == source_id))
-        return result.scalar_one_or_none()
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        return model_to_source(model)
 
-    async def list_all(self) -> list[SourceModel]:
+    async def list_all(self) -> list[Source]:
         result = await self._session.execute(select(SourceModel).order_by(SourceModel.name))
-        return list(result.scalars().all())
+        return [model_to_source(m) for m in result.scalars().all()]
 
-
-class ExtractionRunRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
-
-    async def add(self, run: ExtractionRunModel) -> ExtractionRunModel:
-        self._session.add(run)
+    async def save(self, source: Source) -> Source:
+        model = source_to_model(source)
+        self._session.add(model)
         await self._session.commit()
-        await self._session.refresh(run)
-        return run
+        await self._session.refresh(model)
+        return model_to_source(model)
+
+    async def update_last_run(self, source_id: uuid.UUID, status: str) -> Source | None:
+        from hazlo.infrastructure.db.models import _utcnow
+
+        stmt = (
+            update(SourceModel)
+            .where(SourceModel.id == source_id)
+            .values(last_run_status=status, last_run_at=_utcnow())
+            .returning(SourceModel)
+        )
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        await self._session.commit()
+        return model_to_source(model)

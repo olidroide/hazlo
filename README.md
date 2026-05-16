@@ -218,7 +218,7 @@ data quality.
 
    ```env
    DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/hazlo
-   HAZLO_ENV=development
+   HAZLO_ENV=dev
    ```
 
 6. **Apply migrations / initialize the database**

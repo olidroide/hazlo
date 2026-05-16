@@ -2,27 +2,24 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from hazlo.domain.event import Event, EventStatus, Location, Price, TicketInfo
 
 
 class CreateEventFromSource:
-    def __init__(self) -> None:
-        pass
-
     def execute(
         self,
         *,
         title: str,
         source_id: uuid.UUID,
         source_url: str,
-        external_id: str,
         location_address: str,
         location_neighborhood: str,
-        location_metro_stop: str | None = None,
-        start_time: datetime,
-        end_time: datetime | None = None,
-        price_amount: float | None = None,
+        location_metro: str | None = None,
+        start_at: datetime,
+        end_at: datetime | None = None,
+        price_amount: Decimal | None = None,
         price_is_free: bool = False,
         ticket_url: str | None = None,
         is_children_activity: bool = False,
@@ -31,7 +28,7 @@ class CreateEventFromSource:
         location = Location(
             address=location_address,
             neighborhood=location_neighborhood,
-            metro_stop=location_metro_stop,
+            metro=location_metro,
         )
         price = Price(
             amount=price_amount,
@@ -41,19 +38,17 @@ class CreateEventFromSource:
         if ticket_url:
             ticket_info = TicketInfo(url=ticket_url)
 
-        event = Event(
+        return Event(
             title=title,
             location=location,
-            start_time=start_time,
-            end_time=end_time,
+            start_at=start_at,
+            end_at=end_at,
             price=price,
             ticket_info=ticket_info,
             is_children_activity=is_children_activity,
             is_toddler_friendly=is_toddler_friendly,
             source_url=source_url,
-            external_id=external_id,
-            extraction_date=datetime.now(UTC),
-            status=EventStatus.PENDING_REVIEW,
+            extracted_at=datetime.now(UTC),
+            status=EventStatus.PENDING,
             source_id=source_id,
         )
-        return event
