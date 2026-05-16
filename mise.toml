@@ -1,0 +1,12 @@
+[tools]
+python = "3.12"
+uv = "latest"
+ruff = "latest"
+
+[tasks]
+dev = "uv run fastapi dev hazlo/main.py"
+test = "uv run pytest"
+lint = "uv run ruff check hazlo tests"
+fmt = "uv run ruff format hazlo tests"
+typecheck = "uv run ty check hazlo"
+migrate = "uv run alembic upgrade head"
