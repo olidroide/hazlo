@@ -1,25 +1,54 @@
 services:
   postgres:
+    container_name: hazlo-postgres
     image: postgres:14
     environment:
-      POSTGRES_USER: hazlo
-      POSTGRES_PASSWORD: hazlo
-      POSTGRES_DB: hazlo
+      POSTGRES_USER: ${POSTGRES_USER:-hazlo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hazlo}
+      POSTGRES_DB: ${POSTGRES_DB:-hazlo}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
     ports:
-      - "5433:5432"
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hazlo"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hazlo}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  hazlo:
+    container_name: hazlo-app
+    build: .
+    entrypoint: ["/app/docker/entrypoint.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hazlo}:${POSTGRES_PASSWORD:-hazlo}@postgres:5432/${POSTGRES_DB:-hazlo}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-hazlo-secret}
+      HAZLO_SECRET_KEY: ${HAZLO_SECRET_KEY:-change-me-in-production}
+    ports:
+      - "${APP_HOST_PORT:-8000}:8000"
+    restart: unless-stopped
+    command: fastapi run hazlo/main.py --port 8000 --host 0.0.0.0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   redis:
+    container_name: hazlo-redis
     image: redis:7
     volumes:
       - redis_data:/data
+    ports:
+      - "${REDIS_HOST_PORT:-6380}:6379"
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping"]
       interval: 5s
@@ -27,6 +56,7 @@ services:
       retries: 5
 
   prefect-server:
+    container_name: hazlo-prefect-server
     image: prefecthq/prefect:3-latest
     depends_on:
       postgres:
@@ -34,12 +64,14 @@ services:
       redis:
         condition: service_healthy
     environment:
-      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://hazlo:hazlo@postgres:5432/prefect
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://${POSTGRES_USER:-hazlo}:${POSTGRES_PASSWORD:-hazlo}@postgres:5432/prefect
       PREFECT_SERVER_API_HOST: 0.0.0.0
       PREFECT_SERVER_UI_API_URL: http://localhost:4200/api
+      PREFECT_SERVER_ANALYTICS_ENABLED: false
     command: prefect server start
     ports:
-      - "4200:4200"
+      - "${PREFECT_HOST_PORT:-4200}:4200"
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:4200/api/health', timeout=1)"]
       interval: 30s
@@ -48,14 +80,19 @@ services:
       start_period: 60s
 
   prefect-worker:
-    image: prefecthq/prefect:3-latest
+    container_name: hazlo-prefect-worker
+    build: .
+    entrypoint: ["/app/docker/worker-entrypoint.sh"]
     depends_on:
+      postgres:
+        condition: service_healthy
       prefect-server:
         condition: service_healthy
     environment:
       PREFECT_API_URL: http://prefect-server:4200/api
-    command: prefect worker start --pool local-pool
-    restart: on-failure
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hazlo}:${POSTGRES_PASSWORD:-hazlo}@postgres:5432/${POSTGRES_DB:-hazlo}
+      HAZLO_SECRET_KEY: ${HAZLO_SECRET_KEY:-change-me-in-production}
+    restart: unless-stopped
 
 volumes:
   postgres_data:

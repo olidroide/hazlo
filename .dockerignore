@@ -1,0 +1,40 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+.gitattributes
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+.env
+.env.example
+.copilot-commands/
+
+# IDE / tooling
+.vscode/
+.idea/
+.opencode/
+.agents/
+.ty/
+
+# Node (Tailwind CSS)
+node_modules/
+package.json
+package-lock.json
+
+# Dev / CI
+.github/
+tests/
+docs/
+scripts/
+mise.toml
+
+# Docs
+*.md
+!README.md
+!CHANGELOG.md
+
+# uv lockfile (pip install from pyproject.toml, not lockfile)
+uv.lock
