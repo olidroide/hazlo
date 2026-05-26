@@ -230,9 +230,6 @@ def _parse_dates(start_date: str | None, end_date: str | None, schedule: str | N
     if not start_date:
         return None, None
 
-    time_match = _TIME_PATTERN.search(schedule or "")
-    time_str = time_match.group(1) if time_match else "00:00"
-
     date_obj = _try_parse_date(start_date)
     if date_obj is None:
         return None, None
@@ -240,9 +237,19 @@ def _parse_dates(start_date: str | None, end_date: str | None, schedule: str | N
     if date_obj.year < _MIN_VALID_YEAR:
         return None, None
 
+    time_match = _TIME_PATTERN.search(schedule or "")
+    if time_match:
+        hour = int(time_match.group(1).split(":")[0])
+        minute = int(time_match.group(1).split(":")[1])
+        if hour >= 24:
+            date_obj = date_obj.replace(day=date_obj.day + 1)
+            hour = hour - 24
+    else:
+        hour, minute = 0, 0
+
     start_dt = date_obj.replace(
-        hour=int(time_str.split(":")[0]),
-        minute=int(time_str.split(":")[1]),
+        hour=hour,
+        minute=minute,
         tzinfo=UTC,
     )
 

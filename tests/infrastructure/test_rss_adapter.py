@@ -815,6 +815,23 @@ def test_parse_price_with_html_entities() -> None:
     assert is_free is False
 
 
+def test_parse_dates_hour_gte_24_rolls_to_next_day() -> None:
+    start, end = _parse_dates("12/06/2026", "12/06/2026", "25:30 h")
+    assert start is not None
+    assert "2026-06-13" in start
+    assert "01:30" in start
+    assert end is None
+
+
+def test_parse_dates_hour_gte_24_multi_day() -> None:
+    start, end = _parse_dates("12/06/2026", "13/06/2026", "24:00 h")
+    assert start is not None
+    assert "2026-06-13" in start
+    assert "00:00" in start
+    assert end is not None
+    assert "2026-06-13" in end
+
+
 def test_parse_price_zero_amount() -> None:
     amount, is_free, _notes = _parse_price("0,00 €")
     assert amount is not None
