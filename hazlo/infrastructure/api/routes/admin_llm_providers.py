@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-SUPPORTED_PROVIDERS = {"gemini", "openrouter"}
+SUPPORTED_PROVIDERS = {"gemini", "openrouter", "groq"}
 
 
 @dataclass
@@ -73,11 +73,36 @@ async def _list_openrouter_models(api_key: str) -> list[ModelInfo]:
     return models
 
 
+async def _list_groq_models(api_key: str) -> list[ModelInfo]:
+    import httpx
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            "https://api.groq.com/openai/v1/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    models = []
+    for m in data.get("data", []):
+        model_id = m.get("id", "")
+        display_name = m.get("id", model_id)
+        owned_by = m.get("owned_by", "")
+        is_free = owned_by == "groq" or "groq" in model_id.lower()
+        models.append(ModelInfo(id=model_id, display_name=display_name, is_free=is_free))
+    models.sort(key=lambda m: (not m.is_free, m.display_name))
+    return models
+
+
 async def _list_models(provider_type: str, api_key: str) -> list[ModelInfo]:
     if provider_type == "gemini":
         return await _list_gemini_models(api_key)
     if provider_type == "openrouter":
         return await _list_openrouter_models(api_key)
+    if provider_type == "groq":
+        return await _list_groq_models(api_key)
     raise ValueError(f"Unknown provider type: {provider_type}")
 
 
@@ -88,6 +113,11 @@ async def _test_connection(provider_type: str, api_key: str, model_name: str) ->
     elif provider_type == "openrouter":
         provider = OpenRouterProvider(api_key=api_key)
         model = OpenRouterModel(model_name, provider=provider)
+    elif provider_type == "groq":
+        from pydantic_ai.models.groq import GroqModel
+        from pydantic_ai.providers.groq import GroqProvider
+
+        model = GroqModel(model_name, provider=GroqProvider(api_key=api_key))
     else:
         raise ValueError(f"Unknown provider type: {provider_type}")
 

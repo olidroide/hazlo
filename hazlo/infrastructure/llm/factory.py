@@ -31,6 +31,11 @@ async def build_pydantic_model(provider, api_key: str) -> Model | None:
             )
         case "openrouter":
             return OpenRouterModel(provider.model, provider=OpenRouterProvider(api_key=api_key))
+        case "groq":
+            from pydantic_ai.models.groq import GroqModel
+            from pydantic_ai.providers.groq import GroqProvider
+
+            return GroqModel(provider.model, provider=GroqProvider(api_key=api_key))
     return None
 
 

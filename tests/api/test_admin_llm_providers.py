@@ -351,3 +351,71 @@ async def test_list_models_endpoint_has_radio_inputs() -> None:
 
     assert 'type="radio"' in response.text
     assert 'name="model"' in response.text
+
+
+# ── Groq provider tests ────────────────────────────────────────────────
+
+
+@patch("httpx.AsyncClient")
+@pytest.mark.asyncio
+async def test_list_groq_models_returns_known_models(mock_async_client: MagicMock) -> None:
+    from hazlo.infrastructure.api.routes.admin_llm_providers import _list_groq_models
+
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json = MagicMock(
+        return_value={
+            "data": [
+                {"id": "llama-3.1-8b-instant", "owned_by": "groq"},
+                {"id": "gemma2-9b-it", "owned_by": "groq"},
+                {"id": "llama-3.3-70b-versatile", "owned_by": "groq"},
+            ]
+        }
+    )
+    mock_client_instance = AsyncMock()
+    mock_client_instance.get = AsyncMock(return_value=mock_response)
+    mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+    mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+    mock_async_client.return_value = mock_client_instance
+
+    models = await _list_groq_models("test-api-key")
+
+    assert len(models) >= 3
+    model_ids = [m.id for m in models]
+    assert "llama-3.1-8b-instant" in model_ids
+    assert "gemma2-9b-it" in model_ids
+    assert all(m.is_free for m in models)
+
+
+@pytest.mark.asyncio
+async def test_list_models_endpoint_groq_returns_200() -> None:
+    async def _list_models(provider_type: str, api_key: str) -> list:
+        from hazlo.infrastructure.api.routes.admin_llm_providers import ModelInfo
+
+        return [
+            ModelInfo(id="llama-3.1-8b-instant", display_name="Llama 3.1 8B Instant", is_free=True),
+            ModelInfo(id="gemma2-9b-it", display_name="Gemma 2 9B IT", is_free=True),
+        ]
+
+    with patch("hazlo.infrastructure.api.routes.admin_llm_providers._list_models", _list_models):
+        async with _client() as client:
+            response = await client.post(
+                "/admin/llm-providers/models",
+                data={
+                    "provider_type": "groq",
+                    "api_key": "test-key",
+                },
+            )
+
+    assert response.status_code == 200
+    assert "llama-3.1-8b-instant" in response.text
+    assert "gemma2-9b-it" in response.text
+
+
+@pytest.mark.asyncio
+async def test_new_provider_form_has_groq_in_dropdown() -> None:
+    async with _client() as client:
+        response = await client.get("/admin/llm-providers/_new")
+    assert response.status_code == 200
+    assert "Groq" in response.text
+    assert 'value="groq"' in response.text

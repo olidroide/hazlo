@@ -3,7 +3,7 @@ from __future__ import annotations
 import html
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from xml.etree import ElementTree
 
 import httpx
@@ -241,9 +241,10 @@ def _parse_dates(start_date: str | None, end_date: str | None, schedule: str | N
     if time_match:
         hour = int(time_match.group(1).split(":")[0])
         minute = int(time_match.group(1).split(":")[1])
-        if hour >= 24:
-            date_obj = date_obj.replace(day=date_obj.day + 1)
-            hour = hour - 24
+        day_offset = hour // 24
+        hour = hour % 24
+        if day_offset:
+            date_obj = date_obj + timedelta(days=day_offset)
     else:
         hour, minute = 0, 0
 
