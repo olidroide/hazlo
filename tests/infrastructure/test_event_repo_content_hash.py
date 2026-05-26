@@ -1,4 +1,5 @@
 """Tests for content hash deduplication in EventRepository."""
+
 from __future__ import annotations
 
 import uuid
@@ -61,9 +62,7 @@ class TestEventRepositoryContentHash:
     """Test suite for EventRepository content hash methods."""
 
     @pytest.mark.asyncio
-    async def test_exists_by_content_hash_returns_true_when_exists(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_exists_by_content_hash_returns_true_when_exists(self, db_session: AsyncSession) -> None:
         """Test that exists_by_content_hash returns True when event exists."""
         repo = EventRepository(db_session)
         event = _make_event(content_hash="a" * 64)
@@ -72,27 +71,21 @@ class TestEventRepositoryContentHash:
         assert exists is True
 
     @pytest.mark.asyncio
-    async def test_exists_by_content_hash_returns_false_when_not_exists(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_exists_by_content_hash_returns_false_when_not_exists(self, db_session: AsyncSession) -> None:
         """Test that exists_by_content_hash returns False when event doesn't exist."""
         repo = EventRepository(db_session)
         exists = await repo.exists_by_content_hash("nonexistent_hash")
         assert exists is False
 
     @pytest.mark.asyncio
-    async def test_exists_by_content_hash_returns_false_for_none(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_exists_by_content_hash_returns_false_for_none(self, db_session: AsyncSession) -> None:
         """Test that exists_by_content_hash returns False for None hash."""
         repo = EventRepository(db_session)
         exists = await repo.exists_by_content_hash(None)
         assert exists is False
 
     @pytest.mark.asyncio
-    async def test_list_existing_content_hashes_returns_matching_hashes(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_list_existing_content_hashes_returns_matching_hashes(self, db_session: AsyncSession) -> None:
         """Test that list_existing_content_hashes returns hashes that exist."""
         repo = EventRepository(db_session)
         event = _make_event(content_hash="b" * 64)
@@ -103,9 +96,7 @@ class TestEventRepositoryContentHash:
         assert existing == {event.content_hash}
 
     @pytest.mark.asyncio
-    async def test_list_existing_content_hashes_returns_empty_for_no_matches(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_list_existing_content_hashes_returns_empty_for_no_matches(self, db_session: AsyncSession) -> None:
         """Test that list_existing_content_hashes returns empty set when no matches."""
         repo = EventRepository(db_session)
         hashes = {"hash1", "hash2", "hash3"}
@@ -113,9 +104,7 @@ class TestEventRepositoryContentHash:
         assert existing == set()
 
     @pytest.mark.asyncio
-    async def test_list_existing_content_handles_empty_input(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_list_existing_content_handles_empty_input(self, db_session: AsyncSession) -> None:
         """Test that list_existing_content_hashes handles empty input."""
         repo = EventRepository(db_session)
         existing = await repo.list_existing_content_hashes(set())

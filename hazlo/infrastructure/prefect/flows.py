@@ -8,6 +8,7 @@ from prefect.logging import get_run_logger
 
 from hazlo.application.services import DedupService, EnrichmentService
 from hazlo.application.use_cases.ingest_source import IngestSource
+from hazlo.infrastructure.llm.factory import build_llm_infrastructure
 
 
 @task(name="fetch-source", retries=2, retry_delay_seconds=30)
@@ -99,9 +100,6 @@ async def fetch_source_task(source_id: str) -> dict:
             "health": health,
             "duration_s": round(duration, 1),
         }
-
-
-from hazlo.infrastructure.llm.factory import build_llm_infrastructure
 
 
 def _get_adapter_registry():

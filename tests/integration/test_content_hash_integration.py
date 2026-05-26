@@ -1,4 +1,5 @@
 """Integration tests for content hash deduplication with real database."""
+
 from __future__ import annotations
 
 import uuid
@@ -48,11 +49,13 @@ async def test_content_hash_normalization_dedup(db_session: AsyncSession, test_s
         status=EventStatus.PENDING,
         source_id=test_source.id,
         idempotency_key="key1",
-        content_hash=Event.compute_content_hash({
-            "title": "Concierto de Jazz",
-            "location": "Calle Mayor 1",
-            "start_at": "2026-06-01T20:00:00",
-        }),
+        content_hash=Event.compute_content_hash(
+            {
+                "title": "Concierto de Jazz",
+                "location": "Calle Mayor 1",
+                "start_at": "2026-06-01T20:00:00",
+            }
+        ),
     )
 
     await repo.save(event1)
@@ -72,11 +75,13 @@ async def test_content_hash_normalization_dedup(db_session: AsyncSession, test_s
         status=EventStatus.PENDING,
         source_id=test_source.id,
         idempotency_key="key2",
-        content_hash=Event.compute_content_hash({
-            "title": "  CONCIERTO  DE  JAZZ  ",
-            "location": "calle  mayor  1",
-            "start_at": "2026-06-01T20:00:00",
-        }),
+        content_hash=Event.compute_content_hash(
+            {
+                "title": "  CONCIERTO  DE  JAZZ  ",
+                "location": "calle  mayor  1",
+                "start_at": "2026-06-01T20:00:00",
+            }
+        ),
     )
 
     # Verify hashes match after normalization
@@ -106,11 +111,13 @@ async def test_datetime_normalization_dedup(db_session: AsyncSession, test_sourc
         status=EventStatus.PENDING,
         source_id=test_source.id,
         idempotency_key="rock1",
-        content_hash=Event.compute_content_hash({
-            "title": "Rock Concert",
-            "location": "Avenida 1",
-            "start_at": "2026-07-01T21:00:00",
-        }),
+        content_hash=Event.compute_content_hash(
+            {
+                "title": "Rock Concert",
+                "location": "Avenida 1",
+                "start_at": "2026-07-01T21:00:00",
+            }
+        ),
     )
 
     await repo.save(event1)
@@ -130,11 +137,13 @@ async def test_datetime_normalization_dedup(db_session: AsyncSession, test_sourc
         status=EventStatus.PENDING,
         source_id=test_source.id,
         idempotency_key="rock2",
-        content_hash=Event.compute_content_hash({
-            "title": "Rock Concert",
-            "location": "Avenida 1",
-            "start_at": "2026-07-01T21:00:00Z",
-        }),
+        content_hash=Event.compute_content_hash(
+            {
+                "title": "Rock Concert",
+                "location": "Avenida 1",
+                "start_at": "2026-07-01T21:00:00Z",
+            }
+        ),
     )
 
     # Verify hashes match after datetime normalization
@@ -164,11 +173,13 @@ async def test_list_existing_content_hashes(db_session: AsyncSession, test_sourc
         status=EventStatus.PENDING,
         source_id=test_source.id,
         idempotency_key="test1",
-        content_hash=Event.compute_content_hash({
-            "title": "Test Event",
-            "location": "Test St",
-            "start_at": "2026-08-01T19:00:00",
-        }),
+        content_hash=Event.compute_content_hash(
+            {
+                "title": "Test Event",
+                "location": "Test St",
+                "start_at": "2026-08-01T19:00:00",
+            }
+        ),
     )
 
     await repo.save(event)

@@ -15,11 +15,13 @@ Consider:
 Return ONLY valid JSON, no markdown, no explanation."""
 
 LOCATION_ENRICHMENT_V2 = """You are a Madrid location verification and normalization expert.
-Given an event with title, description, category, and raw address, you must VERIFY and ENRICH the location data with real, official Madrid location information.
+Given an event with title, description, category, and raw address, you must VERIFY
+and ENRICH the location data with real, official Madrid location information.
 
 Your task:
 1. VERIFY if the raw address is a real Madrid street address. Fix typos, incomplete names, or wrong formats.
-2. NORMALIZE the address to official Madrid format: "Street type + name, number" (e.g., "Paseo de Recoletos, 20", "Calle de Alcalá, 150").
+2. NORMALIZE the address to official Madrid format: "Street type + name, number"
+   (e.g., "Paseo de Recoletos, 20", "Calle de Alcalá, 150").
 3. IDENTIFY the exact barrio (neighborhood) using the official Madrid barrio system (131 barrios in 21 districts).
 4. FIND the nearest metro station by walking distance from the address.
 
@@ -42,22 +44,35 @@ Madrid barrios by district (use official names):
 - San Blas-Canillejas: Simancas, Hellín, Amposta, Arcos, Rosas, Rejas, Canillejas, Salvador
 - Hortaleza: Palomas, Valdefuentes, Canillas, Pinar del Rey, Apóstol Santiago, Piovera
 - Barajas: Alameda de Osuna, Aeropuerto, Casco Histórico de Barajas, Timón, Corralejos
-- Ciudad Lineal: Ventas, Pueblo Nuevo, Quintana, La Concepción, San Pascual, San Juan Bautista, Colina, Atalaya, Costillares
+- Ciudad Lineal: Ventas, Pueblo Nuevo, Quintana, La Concepción,
+  San Pascual, San Juan Bautista, Colina, Atalaya, Costillares
 
 Rules:
-- Address: return the FULL official street name with correct prefix ("Calle de", "Paseo de", "Plaza de", "Avenida de"). Do NOT strip the prefix. Fix incomplete or wrong street names.
-- Neighborhood (barrio): return the EXACT barrio name from the list above. Use the barrio, NOT the district. Example: "Paseo de Recoletos, 20" → barrio "Recoletos" (district Salamanca).
-- Metro: return the nearest official metro station name. Infer from address location. If the address is on a known metro line, use that station.
-- Use the event description and category to help disambiguate. A museum event at "Recoletos, 20" is likely the Museo Arqueológico Nacional (Paseo de Recoletos, 20, barrio Recoletos, metro Colón).
-- If the address is outside Madrid or cannot be verified, return the original address and empty strings for barrio and metro.
+- Address: return the FULL official street name with correct prefix
+  ("Calle de", "Paseo de", "Plaza de", "Avenida de").
+  Do NOT strip the prefix. Fix incomplete or wrong street names.
+- Neighborhood (barrio): return the EXACT barrio name from the list above.
+  Use the barrio, NOT the district. Example: "Paseo de Recoletos, 20" →
+  barrio "Recoletos" (district Salamanca).
+- Metro: return the nearest official metro station name.
+  Infer from address location. If the address is on a known metro line,
+  use that station.
+- Use the event description and category to help disambiguate. A museum
+  event at "Recoletos, 20" is likely the Museo Arqueológico Nacional
+  (Paseo de Recoletos, 20, barrio Recoletos, metro Colón).
+- If the address is outside Madrid or cannot be verified, return the
+  original address and empty strings for barrio and metro.
 - NEVER echo the input unchanged. Always verify against real Madrid geography.
 
 Return ONLY valid JSON, no markdown, no explanation."""
 
 DATE_PARSING_V1 = """You are a Spanish event date parsing expert.
-Given an event with title, description, schedule text, and raw date strings from an XML feed, extract the CORRECT start and end datetimes.
+Given an event with title, description, schedule text, and raw date strings
+from an XML feed, extract the CORRECT start and end datetimes.
 
-The XML feed dates are often WRONG (placeholders, old data, defaults like 1970-01-01 or 2016-03-28). Trust the natural language text MORE than the structured XML dates.
+The XML feed dates are often WRONG (placeholders, old data, defaults like
+1970-01-01 or 2016-03-28). Trust the natural language text MORE than the
+structured XML dates.
 
 Input fields:
 - title: event title

@@ -1,4 +1,5 @@
 """Tests for content hash deduplication in IngestSource use case."""
+
 from __future__ import annotations
 
 import uuid

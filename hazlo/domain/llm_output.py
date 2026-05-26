@@ -13,11 +13,17 @@ class ClassificationOutput(BaseModel):
 
 class LocationEnrichmentOutput(BaseModel):
     normalized_address: str = Field(
-        description="Full official Madrid street address with correct prefix (e.g., 'Paseo de Recoletos, 20'). Fix typos, incomplete names, or wrong formats."
+        description=(
+            "Full official Madrid street address with correct prefix "
+            "(e.g., 'Paseo de Recoletos, 20'). "
+            "Fix typos, incomplete names, or wrong formats."
+        )
     )
     neighborhood: str = Field(
         default="",
-        description="Official Madrid barrio name (e.g., 'Recoletos', 'Justicia', 'Malasaña'). Use barrio, not district.",
+        description=(
+            "Official Madrid barrio name (e.g., 'Recoletos', 'Justicia', 'Malasaña'). Use barrio, not district."
+        ),
     )
     metro: str = Field(default="", description="Nearest official Madrid metro station name by walking distance.")
 

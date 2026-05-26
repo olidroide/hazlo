@@ -1,4 +1,5 @@
 """Tests for event detail endpoint."""
+
 from __future__ import annotations
 
 import uuid

@@ -1,4 +1,5 @@
 """Tests for content hash computation in Event domain model."""
+
 from __future__ import annotations
 
 import pytest

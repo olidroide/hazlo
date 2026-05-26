@@ -1,4 +1,5 @@
 """End-to-end test of Prefect flow with content hash dedup."""
+
 import asyncio
 import uuid
 
@@ -46,9 +47,9 @@ async def test_prefect_flow_e2e():
     print(f"Events flagged: {result['events_flagged']}")
     print(f"Errors: {len(result['errors'])}")
 
-    if result['errors']:
+    if result["errors"]:
         print("\nFirst 5 errors:")
-        for error in result['errors'][:5]:
+        for error in result["errors"][:5]:
             print(f"  - {error}")
 
     # Run again to test dedup
@@ -58,7 +59,7 @@ async def test_prefect_flow_e2e():
     print(f"\nSecond run - Events skipped: {result2['events_skipped']}")
     print(f"Second run - Events new: {result2['events_new']}")
 
-    if result2['events_skipped'] > 0:
+    if result2["events_skipped"] > 0:
         print("\n✅ Dedup working: events were skipped on second run")
     else:
         print("\n⚠️  No events skipped - check if source has duplicates")
