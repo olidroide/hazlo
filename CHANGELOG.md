@@ -9,8 +9,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Pydantic AI integration (Phase 3 complete)**: Removed all legacy LLM infrastructure. Deleted `GeminiProvider`, `OpenRouterProvider`, `LLMProvider` ABC, `LLMClient`, `QualityClassifier`, and `LLMEnrichmentService` (~650 LOC). Admin routes now use pydantic-ai providers directly for `test_connection` and `list_models`. All LLM operations now use pydantic-ai agents with structured output.
+- **Pydantic AI integration (Phase 2 complete)**: All production call sites now use pydantic-ai agents. `QualityClassifierAgent` and `LocationEnrichmentAgent` replace legacy `QualityClassifier` and `LLMEnrichmentService` in `flows.py` and `ingest_source.py`. Tests updated to use `FunctionModel` for mocking structured output. Legacy classes marked as deprecated.
+- **Pydantic AI integration (Phase 1)**: Migrated LLM classification and location enrichment to pydantic-ai 1.102.0. `QualityClassifierAgent` and `LocationEnrichmentAgent` use structured output (`output_type`) with automatic validation and retries. `FallbackModel` handles provider failover (Gemini → OpenRouter). Legacy `LLMClient`/providers kept for admin routes.
+- **LLM output models**: `ClassificationOutput` and `LocationEnrichmentOutput` Pydantic models in `domain/llm_output.py` for type-safe LLM responses.
+- **Content hash deduplication**: Events deduplicated by SHA-256 content hash with normalization (whitespace, case, datetime). Upsert on `source_url` conflict.
+- **Event detail view**: Full event detail page with LLM response section, confidence progress bar, publish button for approved events.
+
 ### Fixed
 
+- **LLM JSON parsing**: `maxOutputTokens: 200` truncated Gemini responses. Increased to 500. Pydantic AI structured output eliminates manual JSON parsing.
+- **Price display**: Show `amount_cents/100` correctly in euros.
 - **Repository upsert bug**: `EventRepository.save()` and `SourceRepository.save()` used `session.add()` which fails on duplicate entities. Changed to `session.merge()` for upsert behavior.
 - **LLM provider save**: `LLMProviderRepository.save()` used `session.add()`. Changed to `session.merge()` to allow provider updates.
 - **Prefect deployment entrypoints**: `from_source().deploy()` corrupted module-path entrypoints to file paths. Fixed by using `client.create_deployment()` directly with explicit `entrypoint` parameter.

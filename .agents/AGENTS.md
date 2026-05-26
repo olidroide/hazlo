@@ -90,31 +90,46 @@ Before finishing any task, verify:
 
 When in doubt, update. Stale docs are worse than no docs.
 
-## LLM Layer — Gemini + OpenRouter
+## LLM Layer — Pydantic AI + Gemini + OpenRouter
 
-**Current implementation:**
-- `infrastructure/llm/providers/base.py` — `LLMProvider` ABC + `LLMResponse` + `ModelInfo` dataclass
-- `infrastructure/llm/providers/gemini.py` — GeminiProvider (via `x-goog-api-key` header)
-- `infrastructure/llm/providers/openrouter.py` — OpenRouterProvider (Bearer token)
-- `infrastructure/llm/client.py` — LLMClient: provider routing with circuit breaker fallback
-- `application/services/quality_classifier.py` — calls LLMClient for event classification
+**Current implementation (pydantic-ai 1.102.0, Phase 3 complete — legacy removed):**
+- `domain/llm_output.py` — Pydantic models for structured LLM output (`ClassificationOutput`, `LocationEnrichmentOutput`, `ClassificationResult`)
+- `infrastructure/llm/agents/quality_classifier.py` — `QualityClassifierAgent` (pydantic-ai Agent with `output_type=ClassificationOutput`)
+- `infrastructure/llm/agents/location_enrichment.py` — `LocationEnrichmentAgent` (pydantic-ai Agent with `output_type=LocationEnrichmentOutput`)
+- `infrastructure/llm/prompts.py` — System prompts (`QUALITY_CLASSIFIER_V1`, `LOCATION_ENRICHMENT_V1`)
 - `application/services/review_engine.py` — auto-approves events above confidence threshold
+
+**Removed (Phase 3):**
+- `GeminiProvider`, `OpenRouterProvider`, `LLMProvider` ABC — replaced by pydantic-ai `GoogleProvider`/`OpenRouterProvider`
+- `LLMClient` — replaced by pydantic-ai `FallbackModel`
+- `QualityClassifier`, `LLMEnrichmentService` — replaced by `QualityClassifierAgent`, `LocationEnrichmentAgent`
 
 **Provider config** (admin UI at `/admin/llm-providers`):
 - API keys encrypted at rest via Fernet (`infrastructure/crypto.py`) using `HAZLO_SECRET_KEY`
 - Providers stored in DB, configured via admin panel (not in `.env`)
+- `_build_llm_infrastructure()` in `flows.py` creates pydantic-ai `GoogleModel`/`OpenRouterModel` + `FallbackModel`
+- Admin routes use pydantic-ai providers directly for `test_connection` and `list_models`
 
-**Circuit breaker:**
-- `domain/circuit_breaker.py` — CLOSED→OPEN→HALF_OPEN state machine
-- Default: 3 failures → open, 60s reset timeout
-- LLMClient skips open-circuit providers and falls back to next available
+**Pydantic AI agents (Phase 3 — all legacy removed):**
+- `QualityClassifierAgent` uses `Agent(model, output_type=ClassificationOutput, instructions=QUALITY_CLASSIFIER_V1)`
+- `LocationEnrichmentAgent` uses `Agent(model, output_type=LocationEnrichmentOutput, instructions=LOCATION_ENRICHMENT_V1)`
+- Structured output validated automatically by pydantic-ai — no manual JSON parsing
+- Automatic retries on invalid output (configurable `retries` param, default 3)
+- Exception handling: catches all exceptions and returns fallback results (confidence=0.0 for classifier, original event for enrichment)
+- `FallbackModel` handles provider failover (Gemini → OpenRouter)
+- `IngestSource` uses `QualityClassifierProtocol` and `LocationEnrichmentProtocol` (duck typing)
+- All production call sites (`flows.py`, `ingest_source.py`) use new agents
+- Tests use `FunctionModel` to mock structured output responses
+
+**Circuit breaker (domain only):**
+- `domain/circuit_breaker.py` — CLOSED→OPEN→HALF_OPEN state machine (kept for future use)
+- Note: FallbackModel in pydantic-ai handles failover
 
 **Rules:**
 - Never store API keys in settings.py — use the DB with encrypted storage
-- `list_models` is `@classmethod @abstractmethod` on LLMProvider — subclasses MUST implement
 - Gemini key sent via header `x-goog-api-key`, not query param
-- Provider dispatch via `_PROVIDER_CLASSES` dict in `infrastructure/llm/providers/__init__.py`
-- `test_connection()` returns bool, never raises
+- `test_connection()` uses pydantic-ai Agent to verify connection
+- New LLM services should use pydantic-ai Agents
 
 ## Repository Pattern — merge() vs add()
 
