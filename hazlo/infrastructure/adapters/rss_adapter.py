@@ -19,6 +19,30 @@ _PRICE_PATTERN = re.compile(r"([\d]{1,3}(?:[.]\d{3})*[,.]\d{2})\s*€")
 _PRICE_PATTERN_NO_DECIMALS = re.compile(r"([\d]{1,3}(?:[.]\d{3})*)\s*€")
 _TIME_PATTERN = re.compile(r"(\d{1,2}:\d{2})\s*h")
 _TAG_RE = re.compile(r"<[^>]+>")
+_MIN_VALID_YEAR = 2015
+
+_MONTHS_ES = {
+    "enero": 1, "ene": 1,
+    "febrero": 2, "feb": 2,
+    "marzo": 3, "mar": 3,
+    "abril": 4, "abr": 4,
+    "mayo": 5, "may": 5,
+    "junio": 6, "jun": 6,
+    "julio": 7, "jul": 7,
+    "agosto": 8, "ago": 8,
+    "septiembre": 9, "sep": 9, "setiembre": 9,
+    "octubre": 10, "oct": 10,
+    "noviembre": 11, "nov": 11,
+    "diciembre": 12, "dic": 12,
+}
+
+_ES_DATE_RANGE = re.compile(
+    r"(?:d[ií]as?\s+)?(\d{1,2})"
+    r"(?:\s+y\s+\d{1,2})?"
+    r"\s+de\s+(\w+)"
+    r"(?:\s+de\s+(\d{4}))?",
+    re.IGNORECASE,
+)
 
 
 def _clean_text(text: str) -> str:
@@ -196,25 +220,48 @@ def _parse_dates(start_date: str | None, end_date: str | None, schedule: str | N
     time_match = _TIME_PATTERN.search(schedule or "")
     time_str = time_match.group(1) if time_match else "00:00"
 
-    try:
-        date_obj = datetime.strptime(start_date, _DATE_FORMAT)
-        start_dt = date_obj.replace(
-            hour=int(time_str.split(":")[0]),
-            minute=int(time_str.split(":")[1]),
-            tzinfo=UTC,
-        )
-    except ValueError:
+    date_obj = _try_parse_date(start_date)
+    if date_obj is None:
         return None, None
+
+    if date_obj.year < _MIN_VALID_YEAR:
+        return None, None
+
+    start_dt = date_obj.replace(
+        hour=int(time_str.split(":")[0]),
+        minute=int(time_str.split(":")[1]),
+        tzinfo=UTC,
+    )
 
     end_dt = None
     if end_date and end_date != start_date:
-        try:
-            end_date_obj = datetime.strptime(end_date, _DATE_FORMAT)
+        end_date_obj = _try_parse_date(end_date)
+        if end_date_obj and end_date_obj.year >= _MIN_VALID_YEAR:
             end_dt = end_date_obj.replace(hour=start_dt.hour, minute=start_dt.minute, tzinfo=UTC)
-        except ValueError:
-            pass
 
     return start_dt.isoformat(), end_dt.isoformat() if end_dt else None
+
+
+def _try_parse_date(text: str) -> datetime | None:
+    try:
+        return datetime.strptime(text, _DATE_FORMAT)
+    except ValueError:
+        pass
+
+    match = _ES_DATE_RANGE.search(text)
+    if match:
+        day_str = match.group(1)
+        month_name = match.group(2).lower()
+        year_str = match.group(3)
+        month = _MONTHS_ES.get(month_name)
+        if month:
+            year = int(year_str) if year_str else datetime.now(UTC).year
+            try:
+                return datetime(int(year), month, int(day_str))
+            except ValueError:
+                pass
+
+    return None
 
 
 def _parse_price(text: str | None) -> tuple[int | None, bool, str | None]:

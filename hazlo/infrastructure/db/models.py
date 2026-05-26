@@ -44,6 +44,7 @@ class EventModel(Base):
     source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sources.id"), nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     content_hash: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    is_expired: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
@@ -200,6 +201,7 @@ def event_to_model(event: Event) -> EventModel:
         source_id=event.source_id,
         idempotency_key=event.idempotency_key,
         content_hash=event.content_hash,
+        is_expired=event.is_expired,
         created_at=event.created_at,
         updated_at=event.updated_at,
     )
@@ -227,6 +229,7 @@ def model_to_event(model: EventModel) -> Event:
         source_id=model.source_id,
         idempotency_key=model.idempotency_key,
         content_hash=model.content_hash,
+        is_expired=model.is_expired,
         created_at=model.created_at,
         updated_at=model.updated_at,
     )

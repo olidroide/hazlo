@@ -280,3 +280,53 @@ async def test_flow_with_classifier_and_failing_llm() -> None:
     assert saved_event.confidence_score == 0.0
     assert saved_event.is_children_activity is False
     assert saved_event.is_toddler_friendly is False
+
+
+@pytest.mark.asyncio
+async def test_flow_marks_expired_event_when_end_at_in_past() -> None:
+    adapter = FakeAdapter(raw_events=[_make_raw_event()])
+    use_case = _make_use_case(adapter, classifier=None, review_engine=None)
+    use_case._adapter_registry["rss"] = FakeAdapterWithPastEnd(raw_events=[_make_raw_event()])
+
+    result = await use_case.execute(source=_make_source(), existing_urls=set())
+
+    assert result.events_new == 1
+    event = result.events_to_save[0]
+    assert event.is_expired is True
+
+
+class FakeAdapterWithPastEnd(FakeAdapter):
+    """Adapter that returns events with end_at in the past."""
+
+    async def normalize(self, raw: dict) -> Event:
+        event = await super().normalize(raw)
+        from dataclasses import replace
+        from datetime import UTC, datetime, timedelta
+
+        past_end = datetime.now(UTC) - timedelta(days=7)
+        return replace(event, end_at=past_end)
+
+
+class FakeAdapterWithPastStartNoEnd(FakeAdapter):
+    """Adapter that returns events with start_at in the past and no end_at."""
+
+    async def normalize(self, raw: dict) -> Event:
+        event = await super().normalize(raw)
+        from dataclasses import replace
+        from datetime import UTC, datetime, timedelta
+
+        past_start = datetime.now(UTC) - timedelta(days=30)
+        return replace(event, start_at=past_start, end_at=None)
+
+
+@pytest.mark.asyncio
+async def test_flow_marks_expired_when_start_at_in_past_no_end_at() -> None:
+    adapter = FakeAdapter(raw_events=[_make_raw_event()])
+    use_case = _make_use_case(adapter, classifier=None, review_engine=None)
+    use_case._adapter_registry["rss"] = FakeAdapterWithPastStartNoEnd(raw_events=[_make_raw_event()])
+
+    result = await use_case.execute(source=_make_source(), existing_urls=set())
+
+    assert result.events_new == 1
+    event = result.events_to_save[0]
+    assert event.is_expired is True

@@ -40,15 +40,25 @@ class EventRepository:
         *,
         limit: int = 50,
         offset: int = 0,
+        include_expired: bool = True,
+        sort_by: str = "created_at",
     ) -> list[Event]:
-        result = await self._session.execute(
+        order_col = EventModel.start_at if sort_by == "start_at" else EventModel.created_at
+        stmt = (
             select(EventModel)
             .where(EventModel.status == status.value)
-            .order_by(EventModel.created_at.desc())
+            .order_by(order_col.asc() if sort_by == "start_at" else order_col.desc())
             .limit(limit)
             .offset(offset)
         )
+        if not include_expired:
+            stmt = stmt.where(~EventModel.is_expired)
+        result = await self._session.execute(stmt)
         return [model_to_event(m) for m in result.scalars().all()]
+
+    async def list_existing_urls_for_dedup(self) -> set[str]:
+        result = await self._session.execute(select(EventModel.source_url))
+        return {url for url in result.scalars().all() if url}
 
     async def exists_by_idempotency_key(self, idempotency_key: str) -> bool:
         result = await self._session.execute(
@@ -75,9 +85,7 @@ class EventRepository:
     async def list_existing_content_hashes(self, hashes: set[str]) -> set[str]:
         if not hashes:
             return set()
-        result = await self._session.execute(
-            select(EventModel.content_hash).where(EventModel.content_hash.in_(hashes))
-        )
+        result = await self._session.execute(select(EventModel.content_hash).where(EventModel.content_hash.in_(hashes)))
         return {h for h in result.scalars().all() if h is not None}
 
     async def save(self, event: Event) -> Event:
@@ -105,6 +113,7 @@ class EventRepository:
                 source_id=model.source_id,
                 idempotency_key=model.idempotency_key,
                 content_hash=model.content_hash,
+                is_expired=model.is_expired,
                 created_at=model.created_at,
                 updated_at=model.updated_at,
             )
@@ -128,6 +137,7 @@ class EventRepository:
                     "source_id": stmt.excluded.source_id,
                     "idempotency_key": stmt.excluded.idempotency_key,
                     "content_hash": stmt.excluded.content_hash,
+                    "is_expired": stmt.excluded.is_expired,
                     "updated_at": stmt.excluded.updated_at,
                 },
             ).returning(EventModel)

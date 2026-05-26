@@ -101,6 +101,7 @@ class Event:
     source_id: uuid.UUID | None = None
     idempotency_key: str | None = None
     content_hash: str | None = None
+    is_expired: bool = False
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -172,6 +173,7 @@ class Event:
         Normalizes whitespace, case, and accents to ensure equivalent events
         produce the same hash regardless of formatting differences.
         """
+
         def normalize_text(text: object) -> object:
             if not isinstance(text, str):
                 return text

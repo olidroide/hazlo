@@ -25,6 +25,11 @@ class QualityClassifierProtocol(Protocol):
 class LocationEnrichmentProtocol(Protocol):
     async def enrich_location(self, event: Event) -> Event: ...
 
+
+class DateParserProtocol(Protocol):
+    async def parse_dates(self, event: Event) -> Event: ...
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,6 +57,7 @@ class IngestSource:
         quality_classifier: QualityClassifierProtocol | None = None,
         review_engine: ReviewEngine | None = None,
         llm_enrichment_service: LocationEnrichmentProtocol | None = None,
+        date_parser: DateParserProtocol | None = None,
         event_repo: object | None = None,
         event_queue: asyncio.Queue[dict[str, object]] | None = None,
     ) -> None:
@@ -61,6 +67,7 @@ class IngestSource:
         self._classifier = quality_classifier
         self._review_engine = review_engine
         self._llm_enrichment = llm_enrichment_service
+        self._date_parser = date_parser
         self._event_repo = event_repo
         self._event_queue = event_queue
 
@@ -151,6 +158,23 @@ class IngestSource:
                         msg=f"{event.title} → LLM error: {exc}",
                     )
 
+            if self._date_parser:
+                try:
+                    event = await self._date_parser.parse_dates(event)
+                    await self._emit(
+                        "llm_date_parse",
+                        "success",
+                        msg=f"{event.title} → start={event.start_at.isoformat() if event.start_at else 'N/A'} "
+                        f"end={event.end_at.isoformat() if event.end_at else 'N/A'}",
+                    )
+                except Exception as exc:
+                    result.errors.append(f"Date parsing failed: {exc}")
+                    await self._emit(
+                        "llm_date_parse",
+                        "error",
+                        msg=f"{event.title} → LLM error: {exc}",
+                    )
+
             if not event.is_valid():
                 await self._emit(
                     "normalize",
@@ -212,6 +236,15 @@ class IngestSource:
             else:
                 event = replace(event, status=EventStatus.PENDING)
                 result.events_flagged += 1
+
+            if self._is_past(event):
+                event = replace(event, is_expired=True)
+                logger.info(
+                    "Event %s marked expired (end_at=%s, start_at=%s)",
+                    event.title,
+                    event.end_at,
+                    event.start_at,
+                )
 
             result.events_to_save.append(event)
             existing_urls.add(event.source_url)
@@ -301,3 +334,12 @@ class IngestSource:
             price=enriched.get("price", event.price),
             ticket_info=enriched.get("ticket_info", event.ticket_info),
         )
+
+    @staticmethod
+    def _is_past(event: Event) -> bool:
+        now = datetime.now(UTC)
+        if event.end_at:
+            return event.end_at < now
+        if event.start_at:
+            return event.start_at < now
+        return False

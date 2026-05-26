@@ -12,9 +12,26 @@ class ClassificationOutput(BaseModel):
 
 
 class LocationEnrichmentOutput(BaseModel):
-    normalized_address: str = Field(description="Clean address without prefixes like 'de ', 'calle ', 'avenida '")
-    neighborhood: str = Field(default="", description="Madrid neighborhood or district name")
-    metro: str = Field(default="", description="Nearest Madrid metro station name")
+    normalized_address: str = Field(
+        description="Full official Madrid street address with correct prefix (e.g., 'Paseo de Recoletos, 20'). Fix typos, incomplete names, or wrong formats."
+    )
+    neighborhood: str = Field(
+        default="",
+        description="Official Madrid barrio name (e.g., 'Recoletos', 'Justicia', 'Malasaña'). Use barrio, not district.",
+    )
+    metro: str = Field(default="", description="Nearest official Madrid metro station name by walking distance.")
+
+
+class DateParsingOutput(BaseModel):
+    start_at: str | None = Field(
+        default=None,
+        description="Event start datetime in ISO 8601 format. Use current year if year not specified.",
+    )
+    end_at: str | None = Field(
+        default=None,
+        description="Event end datetime in ISO 8601 format. None if single-day event.",
+    )
+    confidence: float = Field(ge=0.0, le=1.0, description="Confidence in the date parsing, 0.0 to 1.0")
 
 
 @dataclass

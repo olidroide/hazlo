@@ -190,3 +190,39 @@ async def test_source_save_upsert(db_session: AsyncSession) -> None:
     assert fetched is not None
     assert fetched.name == "Updated Source Name"
     assert fetched.is_active is False
+
+
+@pytest.mark.asyncio
+async def test_list_by_status_excludes_expired_when_requested(db_session: AsyncSession) -> None:
+    repo = EventRepository(db_session)
+    active = _make_event()
+    active.title = "Active Event"
+    expired = _make_event()
+    expired.title = "Expired Event"
+    expired.is_expired = True
+
+    await repo.save(active)
+    await repo.save(expired)
+
+    pending_with_expired = await repo.list_by_status(EventStatus.PENDING, include_expired=True)
+    assert any(e.title == "Expired Event" for e in pending_with_expired)
+
+    pending_no_expired = await repo.list_by_status(EventStatus.PENDING, include_expired=False)
+    assert not any(e.title == "Expired Event" for e in pending_no_expired)
+    assert any(e.title == "Active Event" for e in pending_no_expired)
+
+
+@pytest.mark.asyncio
+async def test_list_existing_urls_for_dedup_includes_all_events(db_session: AsyncSession) -> None:
+    repo = EventRepository(db_session)
+    e1 = _make_event()
+    e2 = _make_event()
+    e2.is_expired = True
+    e2.status = EventStatus.APPROVED
+
+    await repo.save(e1)
+    await repo.save(e2)
+
+    urls = await repo.list_existing_urls_for_dedup()
+    assert e1.source_url in urls
+    assert e2.source_url in urls

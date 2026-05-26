@@ -8,7 +8,6 @@ from prefect.logging import get_run_logger
 
 from hazlo.application.services import DedupService, EnrichmentService
 from hazlo.application.use_cases.ingest_source import IngestSource
-from hazlo.domain.event import EventStatus
 
 
 @task(name="fetch-source", retries=2, retry_delay_seconds=30)
@@ -36,10 +35,9 @@ async def fetch_source_task(source_id: str) -> dict:
             source.url or "IMAP",
         )
 
-        pending = await event_repo.list_by_status(EventStatus.PENDING)
-        existing_urls = {e.source_url for e in pending}
+        existing_urls = await event_repo.list_existing_urls_for_dedup()
 
-        classifier, review_engine, llm_enrichment = await _build_llm_infrastructure(session)
+        classifier, review_engine, llm_enrichment, date_parser = await build_llm_infrastructure(session)
 
         if classifier is not None:
             logger.info("[%s] LLM classifier active", source_id[:8])
@@ -53,6 +51,7 @@ async def fetch_source_task(source_id: str) -> dict:
             quality_classifier=classifier,
             review_engine=review_engine,
             llm_enrichment_service=llm_enrichment,
+            date_parser=date_parser,
             event_repo=event_repo,
         )
         result = await use_case.execute(source=source, existing_urls=existing_urls)
@@ -102,78 +101,7 @@ async def fetch_source_task(source_id: str) -> dict:
         }
 
 
-async def _build_pydantic_model(provider, api_key: str):
-    """Create a pydantic-ai model from an LLMProviderModel and decrypted key."""
-    from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
-    from pydantic_ai.models.openrouter import OpenRouterModel
-    from pydantic_ai.providers.google import GoogleProvider
-    from pydantic_ai.providers.openrouter import OpenRouterProvider
-
-    match provider.provider_type:
-        case "gemini":
-            return GoogleModel(
-                provider.model,
-                provider=GoogleProvider(api_key=api_key),
-                settings=GoogleModelSettings(temperature=0.0, max_tokens=500),
-            )
-        case "openrouter":
-            return OpenRouterModel(provider.model, provider=OpenRouterProvider(api_key=api_key))
-    return None
-
-
-async def _build_llm_infrastructure(session):
-    """Build QualityClassifierAgent + ReviewEngine + LocationEnrichmentAgent from DB-configured LLM providers.
-
-    Returns (None, None, None) if no active LLM provider is configured.
-    """
-    from pydantic_ai.models.fallback import FallbackModel
-    from sqlalchemy import select
-
-    from hazlo.application.services import ReviewEngine
-    from hazlo.infrastructure.crypto import decrypt_value
-    from hazlo.infrastructure.db.models import LLMProviderModel
-    from hazlo.infrastructure.llm.agents import LocationEnrichmentAgent, QualityClassifierAgent
-    from hazlo.settings import get_settings
-    settings = get_settings()
-
-    result = await session.execute(select(LLMProviderModel).where(LLMProviderModel.is_active))
-    active_provider = result.scalar_one_or_none()
-
-    if active_provider is None:
-        return None, ReviewEngine(auto_approve_threshold=settings.auto_approve_threshold), None
-
-    if not settings.hazlo_secret_key:
-        return None, ReviewEngine(auto_approve_threshold=settings.auto_approve_threshold), None
-
-    models = []
-    api_key = decrypt_value(active_provider.api_key_encrypted, settings.hazlo_secret_key)
-    model = await _build_pydantic_model(active_provider, api_key)
-    if model:
-        models.append(model)
-
-    result = await session.execute(
-        select(LLMProviderModel)
-        .where(
-            LLMProviderModel.is_active.is_(False),
-            LLMProviderModel.id != active_provider.id,
-        )
-        .order_by(LLMProviderModel.priority)
-    )
-    fallback_providers = result.scalars().all()
-
-    for fp in fallback_providers:
-        fp_api_key = decrypt_value(fp.api_key_encrypted, settings.hazlo_secret_key)
-        fp_model = await _build_pydantic_model(fp, fp_api_key)
-        if fp_model:
-            models.append(fp_model)
-
-    pydantic_model = models[0] if len(models) == 1 else FallbackModel(*models)
-
-    classifier = QualityClassifierAgent(pydantic_model)
-    review_engine = ReviewEngine(auto_approve_threshold=settings.auto_approve_threshold)
-    llm_enrichment = LocationEnrichmentAgent(pydantic_model)
-
-    return classifier, review_engine, llm_enrichment
+from hazlo.infrastructure.llm.factory import build_llm_infrastructure
 
 
 def _get_adapter_registry():
@@ -261,12 +189,20 @@ async def ingest_all_sources_flow() -> None:
             total_errors += len(errs)
 
             status = "OK" if not errs else f"ERRORS({len(errs)})"
-            source_breakdown.append({
-                "name": name, "found": found, "new": new,
-                "skipped": skipped, "approved": approved,
-                "flagged": flagged, "rejected": rejected,
-                "errors": len(errs), "duration_s": duration, "status": status,
-            })
+            source_breakdown.append(
+                {
+                    "name": name,
+                    "found": found,
+                    "new": new,
+                    "skipped": skipped,
+                    "approved": approved,
+                    "flagged": flagged,
+                    "rejected": rejected,
+                    "errors": len(errs),
+                    "duration_s": duration,
+                    "status": status,
+                }
+            )
 
     duration = time.monotonic() - t0
 
@@ -275,8 +211,12 @@ async def ingest_all_sources_flow() -> None:
     logger.info("=" * 80)
     logger.info(
         "TOTAL → found=%d new=%d skipped=%d approved=%d flagged=%d rejected=%d errors=%d",
-        total_found, total_new, total_skipped,
-        total_auto_approved, total_flagged, total_auto_rejected,
+        total_found,
+        total_new,
+        total_skipped,
+        total_auto_approved,
+        total_flagged,
+        total_auto_rejected,
         total_errors,
     )
     for sb in source_breakdown:
@@ -286,9 +226,16 @@ async def ingest_all_sources_flow() -> None:
             logger.info(
                 "  %-30s found=%-5d new=%-4d skipped=%-5d "
                 "approved=%-4d flagged=%-4d rejected=%-4d errors=%-3d (%.1fs) [%s]",
-                sb["name"], sb["found"], sb["new"], sb["skipped"],
-                sb["approved"], sb["flagged"], sb["rejected"],
-                sb["errors"], sb["duration_s"], sb["status"],
+                sb["name"],
+                sb["found"],
+                sb["new"],
+                sb["skipped"],
+                sb["approved"],
+                sb["flagged"],
+                sb["rejected"],
+                sb["errors"],
+                sb["duration_s"],
+                sb["status"],
             )
     logger.info("=" * 80)
 

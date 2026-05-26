@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -9,6 +10,7 @@ from hazlo.domain.event import EventStatus
 from hazlo.infrastructure.api.deps import get_event_repo, get_review_repo
 from hazlo.infrastructure.db.repositories import EventRepository, ReviewRepository
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -49,6 +51,7 @@ def _event_to_dict(event) -> dict:
         "agent_review": event.agent_review,
         "content_hash": event.content_hash,
         "idempotency_key": event.idempotency_key,
+        "is_expired": event.is_expired,
     }
 
 
@@ -61,6 +64,7 @@ async def list_events(
     status: str = "pending",
     confidence: str = "",
     page: int = 1,
+    include_expired: bool = False,
     event_repo: EventRepository = Depends(get_event_repo),
 ):
     try:
@@ -69,7 +73,14 @@ async def list_events(
         raise HTTPException(status_code=400, detail=f"Invalid status: {status}") from err
 
     offset = (page - 1) * PAGE_SIZE
-    events = await event_repo.list_by_status(event_status, limit=PAGE_SIZE, offset=offset)
+    sort_by = "start_at" if status == "pending" else "created_at"
+    events = await event_repo.list_by_status(
+        event_status,
+        limit=PAGE_SIZE,
+        offset=offset,
+        include_expired=include_expired,
+        sort_by=sort_by,
+    )
     event_dicts = [_event_to_dict(e) for e in events]
 
     if confidence:
@@ -87,6 +98,7 @@ async def list_events(
             "page": page,
             "has_more": has_more,
             "page_size": PAGE_SIZE,
+            "include_expired": include_expired,
         },
     )
 
@@ -192,4 +204,62 @@ async def review_event(
         request,
         "admin/events/_event_card.html",
         {"event": _event_to_dict(updated)},
+    )
+
+
+@router.post("/{event_id}/enrich")
+async def enrich_event(
+    request: Request,
+    event_id: uuid.UUID,
+    event_repo: EventRepository = Depends(get_event_repo),
+):
+    event = await event_repo.get(event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Evento no encontrado")
+
+    loc = event.location
+    logger.info(
+        "Enriching event %s: %s (address=%s, neighborhood=%s, metro=%s)",
+        event.id,
+        event.title,
+        loc.address if loc else "",
+        loc.neighborhood if loc else "",
+        loc.metro if loc else "",
+    )
+
+    from hazlo.infrastructure.db.session import async_session_factory
+    from hazlo.infrastructure.llm.factory import build_llm_infrastructure
+
+    async with async_session_factory() as session:
+        _, _, llm_enrichment, _ = await build_llm_infrastructure(session)
+
+    if llm_enrichment is None:
+        logger.warning("LLM enrichment not available for event %s", event.id)
+        return request.state.templates.TemplateResponse(
+            request,
+            "admin/events/_event_card.html",
+            {"event": _event_to_dict(event)},
+        )
+
+    enriched = await llm_enrichment.enrich_location(event)
+
+    old_loc = event.location
+    new_loc = enriched.location
+    logger.info(
+        "Enrichment result for %s: address='%s'→'%s', neighborhood='%s'→'%s', metro='%s'→'%s'",
+        event.id,
+        old_loc.address if old_loc else "",
+        new_loc.address if new_loc else "",
+        old_loc.neighborhood if old_loc else "",
+        new_loc.neighborhood if new_loc else "",
+        old_loc.metro if old_loc else "",
+        new_loc.metro if new_loc else "",
+    )
+
+    await event_repo.save(enriched)
+    logger.info("Event %s saved after enrichment", event.id)
+    return request.state.templates.TemplateResponse(
+        request,
+        "admin/events/_event_card.html",
+        {"event": _event_to_dict(enriched)},
     )

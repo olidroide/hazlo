@@ -1,9 +1,14 @@
 <div id="event-{{ event.id }}"
-     class="bg-white dark:bg-neutral-800 rounded-lg shadow-sm border border-neutral-200 dark:border-neutral-700 p-4 space-y-3">
+     class="bg-white dark:bg-neutral-800 rounded-lg shadow-sm border border-neutral-200 dark:border-neutral-700 p-4 space-y-3{% if event.is_expired %} opacity-60{% endif %}">
     <!-- Header -->
     <div class="flex justify-between items-start gap-2">
         <h3 class="text-sm font-semibold text-neutral-900 dark:text-white line-clamp-2">{{ event.title }}</h3>
-        <div class="flex flex-shrink-0 gap-1">
+        <div class="flex shrink-0 gap-1">
+            {% if event.is_expired %}
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400" title="Evento caducado">
+                Caducado
+            </span>
+            {% endif %}
             <!-- Confidence badge -->
             {% if event.confidence_score is not none %}
             {% set conf = event.confidence_score %}
@@ -42,7 +47,7 @@
     <div class="space-y-1 text-sm text-neutral-600 dark:text-neutral-400">
         {% if event.location %}
         <p class="flex items-center">
-            <svg class="w-4 h-4 mr-1.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="w-4 h-4 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
             </svg>
@@ -51,7 +56,7 @@
         {% endif %}
         {% if event.start_at %}
         <p class="flex items-center">
-            <svg class="w-4 h-4 mr-1.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="w-4 h-4 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
             </svg>
             {{ event.start_at.strftime('%d/%m/%Y %H:%M') }}
@@ -59,7 +64,7 @@
         {% endif %}
         {% if event.price %}
         <p class="flex items-center">
-            <svg class="w-4 h-4 mr-1.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="w-4 h-4 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
             {% if event.price.is_free %}Gratis{% else %}{{ "%.2f"|format(event.price.amount_cents / 100) }}€{% endif %}
@@ -79,8 +84,17 @@
 
     <!-- Actions -->
     {% if event.status == 'pending' %}
-    <div class="flex space-x-2 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+    <div class="space-y-2 pt-2 border-t border-neutral-200 dark:border-neutral-700">
         <button
+            hx-post="/admin/events/{{ event.id }}/enrich"
+            hx-target="#event-{{ event.id }}"
+            hx-swap="outerHTML"
+            class="w-full px-3 py-1.5 text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/20 dark:text-purple-300 dark:hover:bg-purple-900/40 rounded-md">
+            <span class="btn-spinner mr-2"></span>
+            Enriquecer (IA)
+        </button>
+        <div class="flex space-x-2">
+            <button
             hx-patch="/admin/events/{{ event.id }}/review"
             hx-vals='{"action": "approve"}'
             hx-target="#event-{{ event.id }}"
@@ -97,6 +111,7 @@
             class="flex-1 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/40 rounded-md">
             Rechazar
         </button>
+        </div>
     </div>
     {% elif event.status == 'approved' %}
     <div class="flex space-x-2 pt-2 border-t border-neutral-200 dark:border-neutral-700">

@@ -348,6 +348,39 @@ def test_parse_dates_no_fin() -> None:
     assert end is None
 
 
+def test_parse_dates_epoch_rejected() -> None:
+    start, end = _parse_dates("01/01/1970", "01/01/1970", "18:30 h")
+    assert start is None
+    assert end is None
+
+
+def test_parse_dates_before_min_year_rejected() -> None:
+    start, end = _parse_dates("01/01/2010", "01/01/2010", "10:00 h")
+    assert start is None
+    assert end is None
+
+
+def test_parse_dates_spanish_format_dias_y() -> None:
+    start, end = _parse_dates("días 19 y 20 de junio de 2026", "", "18:30 h")
+    assert start is not None
+    assert "2026-06-19" in start
+    assert "18:30" in start
+    assert end is None
+
+
+def test_parse_dates_spanish_format_current_year() -> None:
+    start, end = _parse_dates("días 15 y 16 de marzo", "", "12:00 h")
+    assert start is not None
+    assert "-03-15" in start
+    assert end is None
+
+
+def test_parse_dates_spanish_format_invalid_month() -> None:
+    start, end = _parse_dates("días 19 y 20 de fakebruary", "", "10:00 h")
+    assert start is None
+    assert end is None
+
+
 def test_parse_dates_time_without_h_suffix() -> None:
     start, _end = _parse_dates("12/06/2026", "12/06/2026", "19:30")
     assert start is not None

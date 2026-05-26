@@ -27,6 +27,12 @@
                     <option value="low" {% if confidence_filter == 'low' %}selected{% endif %}>&lt;70%</option>
                     <option value="none" {% if confidence_filter == 'none' %}selected{% endif %}>Sin puntuación</option>
                 </select>
+                {% if current_status == 'pending' %}
+                <a href="/admin/events?status=pending{% if confidence_filter %}&confidence={{ confidence_filter }}{% endif %}&include_expired={% if include_expired %}false{% else %}true{% endif %}"
+                   class="px-3 py-1.5 text-sm rounded-md {% if include_expired %}bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300{% else %}bg-neutral-100 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-600{% endif %}">
+                    {% if include_expired %}Ocultar caducados{% else %}Mostrar caducados{% endif %}
+                </a>
+                {% endif %}
             </div>
         </div>
 
@@ -72,7 +78,7 @@
     </div>
 
     <!-- Detail and Audit sidebar -->
-    <div class="w-96 flex-shrink-0 space-y-4">
+    <div class="w-96 shrink-0 space-y-4">
         <div class="sticky top-20 space-y-4">
             <!-- Detail panel -->
             <div class="bg-white dark:bg-neutral-800 rounded-lg shadow-sm border border-neutral-200 dark:border-neutral-700 p-4">

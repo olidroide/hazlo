@@ -134,3 +134,21 @@ class TestLocationEnrichmentAgent:
         assert enriched_event.location.address == "de Legazpi, 8"
         assert enriched_event.location.neighborhood == ""
         assert enriched_event.location.metro is None
+
+    @pytest.mark.asyncio
+    async def test_enrich_location_no_delta_returns_original(self, sample_event: Event) -> None:
+        """Test that when LLM returns same values, original event is returned (no delta)."""
+        model = create_mock_model(
+            normalized_address="de Legazpi, 8",
+            neighborhood="",
+            metro="",
+        )
+        agent = LocationEnrichmentAgent(model)
+
+        enriched_event = await agent.enrich_location(sample_event)
+
+        assert enriched_event is sample_event
+        assert enriched_event.location is not None
+        assert enriched_event.location.address == "de Legazpi, 8"
+        assert enriched_event.location.neighborhood == ""
+        assert enriched_event.location.metro is None
