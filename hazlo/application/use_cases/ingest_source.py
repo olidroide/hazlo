@@ -13,6 +13,7 @@ from hazlo.application.services import (
     QualityClassifier,
     ReviewEngine,
 )
+from hazlo.application.services.llm_enrichment_service import LLMEnrichmentService
 from hazlo.domain.event import Event, EventStatus
 from hazlo.domain.source import Source
 from hazlo.infrastructure.adapters.base import BaseSourceAdapter
@@ -43,6 +44,7 @@ class IngestSource:
         dedup_service: DedupService,
         quality_classifier: QualityClassifier | None = None,
         review_engine: ReviewEngine | None = None,
+        llm_enrichment_service: LLMEnrichmentService | None = None,
         event_repo: object | None = None,
         event_queue: asyncio.Queue[dict[str, object]] | None = None,
     ) -> None:
@@ -51,6 +53,7 @@ class IngestSource:
         self._dedup = dedup_service
         self._classifier = quality_classifier
         self._review_engine = review_engine
+        self._llm_enrichment = llm_enrichment_service
         self._event_repo = event_repo
         self._event_queue = event_queue
 
@@ -131,6 +134,23 @@ class IngestSource:
             )
 
             event = self._apply_enrichment(event)
+
+            if self._llm_enrichment:
+                try:
+                    event = await self._llm_enrichment.enrich_location(event)
+                    await self._emit(
+                        "llm_enrich",
+                        "success",
+                        msg=f"{event.title} → metro={event.location.metro if event.location else 'N/A'} "
+                        f"neighborhood={event.location.neighborhood if event.location else 'N/A'}",
+                    )
+                except Exception as exc:
+                    result.errors.append(f"LLM enrichment failed: {exc}")
+                    await self._emit(
+                        "llm_enrich",
+                        "error",
+                        msg=f"{event.title} → LLM error: {exc}",
+                    )
 
             if self._dedup.execute(event, existing_urls):
                 result.events_skipped += 1
@@ -247,9 +267,9 @@ class IngestSource:
         return replace(
             event,
             title=enriched.get("title", event.title),
-            location=event.location,
+            location=enriched.get("location", event.location),
             start_at=enriched.get("start_at", event.start_at),
             end_at=enriched.get("end_at", event.end_at),
-            price=event.price,
-            ticket_info=event.ticket_info,
+            price=enriched.get("price", event.price),
+            ticket_info=enriched.get("ticket_info", event.ticket_info),
         )

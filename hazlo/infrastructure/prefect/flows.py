@@ -27,7 +27,7 @@ async def fetch_source_task(source_id: str) -> dict:
         pending = await event_repo.list_by_status(EventStatus.PENDING)
         existing_urls = {e.source_url for e in pending}
 
-        classifier, review_engine = await _build_llm_infrastructure(session)
+        classifier, review_engine, llm_enrichment = await _build_llm_infrastructure(session)
 
         use_case = IngestSource(
             adapter_registry=_get_adapter_registry(),
@@ -35,6 +35,7 @@ async def fetch_source_task(source_id: str) -> dict:
             dedup_service=DedupService(),
             quality_classifier=classifier,
             review_engine=review_engine,
+            llm_enrichment_service=llm_enrichment,
             event_repo=event_repo,
         )
         result = await use_case.execute(source=source, existing_urls=existing_urls)
@@ -63,11 +64,12 @@ async def fetch_source_task(source_id: str) -> dict:
 
 
 async def _build_llm_infrastructure(session):
-    """Build QualityClassifier + ReviewEngine from DB-configured LLM providers.
+    """Build QualityClassifier + ReviewEngine + LLMEnrichmentService from DB-configured LLM providers.
 
-    Returns (None, None) if no active LLM provider is configured.
+    Returns (None, None, None) if no active LLM provider is configured.
     """
     from hazlo.application.services import QualityClassifier, ReviewEngine
+    from hazlo.application.services.llm_enrichment_service import LLMEnrichmentService
     from hazlo.infrastructure.crypto import decrypt_value
     from hazlo.infrastructure.db.models import LLMProviderModel
     from hazlo.infrastructure.llm import LLMClient
@@ -80,10 +82,10 @@ async def _build_llm_infrastructure(session):
     active_provider = result.scalar_one_or_none()
 
     if active_provider is None:
-        return None, ReviewEngine(auto_approve_threshold=settings.auto_approve_threshold)
+        return None, ReviewEngine(auto_approve_threshold=settings.auto_approve_threshold), None
 
     if not settings.hazlo_secret_key:
-        return None, ReviewEngine(auto_approve_threshold=settings.auto_approve_threshold)
+        return None, ReviewEngine(auto_approve_threshold=settings.auto_approve_threshold), None
 
     providers: list[tuple[LLMProvider, str]] = []
     api_key = decrypt_value(active_provider.api_key_encrypted, settings.hazlo_secret_key)
@@ -120,8 +122,9 @@ async def _build_llm_infrastructure(session):
     )
     classifier = QualityClassifier(llm_client)
     review_engine = ReviewEngine(auto_approve_threshold=settings.auto_approve_threshold)
+    llm_enrichment = LLMEnrichmentService(llm_client)
 
-    return classifier, review_engine
+    return classifier, review_engine, llm_enrichment
 
 
 def _get_adapter_registry():
