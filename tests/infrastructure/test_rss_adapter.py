@@ -142,12 +142,14 @@ async def test_rss_adapter_parses_xml() -> None:
 
     first = raw_events[0]
     assert first["title"] == "The CUBintage"
+    assert first["raw_title"] == "The CUBintage"
     assert first["address"] == "de Santa Catalina, 10"
     assert first["neighborhood"] == "Madrid"
     assert first["source_url"] == "https://www.esmadrid.com/agenda/cubintage"
     assert first["is_free"] is False
     assert first["venue"] == "Café Central Ateneo"
-    assert first["description"] == "<p>Concierto de jazz.</p>"
+    assert first["description"] == "Concierto de jazz."
+    assert first["raw_description"] == "<p>Concierto de jazz.</p>"
 
     second = raw_events[1]
     assert second["title"] == "Evento Gratuito"
@@ -550,8 +552,10 @@ async def test_rss_adapter_cdata_in_all_fields() -> None:
 
     assert len(raw_events) == 1
     event = raw_events[0]
-    assert event["title"] == "<h1>Special Event</h1>"
-    assert event["description"] == "<p>Descripción con <strong>HTML</strong> y &amp; entidades.</p>"
+    assert event["title"] == "Special Event"
+    assert event["raw_title"] == "<h1>Special Event</h1>"
+    assert event["description"] == "Descripción con HTML y & entidades."
+    assert event["raw_description"] == "<p>Descripción con <strong>HTML</strong> y & entidades.</p>"
     assert event["source_url"] == "https://example.com/event"
     assert event["venue"] == "Sala <i>Principal</i>"
     assert event["address"] == "Calle de <b>Sol</b>, 5"

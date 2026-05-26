@@ -26,6 +26,9 @@ class EventModel(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
+    raw_title: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    raw_description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     location: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -179,6 +182,9 @@ def event_to_model(event: Event) -> EventModel:
     return EventModel(
         id=event.id,
         title=event.title,
+        raw_title=event.raw_title,
+        description=event.description,
+        raw_description=event.raw_description,
         location=_location_to_dict(event.location),
         start_at=event.start_at,
         end_at=event.end_at,
@@ -203,6 +209,9 @@ def model_to_event(model: EventModel) -> Event:
     return Event(
         id=model.id,
         title=model.title,
+        raw_title=model.raw_title,
+        description=model.description,
+        raw_description=model.raw_description,
         location=_dict_to_location(model.location),
         start_at=model.start_at,
         end_at=model.end_at,

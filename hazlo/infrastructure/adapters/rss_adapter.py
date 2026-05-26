@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import re
 import uuid
 from datetime import UTC, datetime
@@ -17,6 +18,11 @@ _DATE_FORMAT = "%d/%m/%Y"
 _PRICE_PATTERN = re.compile(r"([\d]{1,3}(?:[.]\d{3})*[,.]\d{2})\s*€")
 _PRICE_PATTERN_NO_DECIMALS = re.compile(r"([\d]{1,3}(?:[.]\d{3})*)\s*€")
 _TIME_PATTERN = re.compile(r"(\d{1,2}:\d{2})\s*h")
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _clean_text(text: str) -> str:
+    return _TAG_RE.sub("", html.unescape(text)).strip()
 
 
 class RssSourceAdapter(BaseSourceAdapter):
@@ -52,10 +58,10 @@ class RssSourceAdapter(BaseSourceAdapter):
             if geo is not None:
                 addr_elem = geo.find("address")
                 if addr_elem is not None and addr_elem.text:
-                    address = addr_elem.text.strip()
+                    address = html.unescape(addr_elem.text.strip())
                 sub_admin = geo.find("subAdministrativeArea")
                 if sub_admin is not None and sub_admin.text:
-                    locality = sub_admin.text.strip()
+                    locality = html.unescape(sub_admin.text.strip())
 
             schedule_text = ""
             price_text = ""
@@ -67,9 +73,9 @@ class RssSourceAdapter(BaseSourceAdapter):
                 for item in extra.findall("item"):
                     item_name = item.get("name", "")
                     if item_name == "Horario" and item.text:
-                        schedule_text = item.text.strip()
+                        schedule_text = html.unescape(item.text.strip())
                     elif item_name == "Servicios de pago" and item.text:
-                        price_text = item.text.strip()
+                        price_text = html.unescape(item.text.strip())
 
                 dates_elem = extra.find("fechas")
                 if dates_elem is not None:
@@ -86,16 +92,19 @@ class RssSourceAdapter(BaseSourceAdapter):
                 if cats_elem is not None:
                     for cat in cats_elem.findall(".//categoria/item"):
                         if cat.get("name") == "Categoria" and cat.text:
-                            categories.append(cat.text.strip())
+                            categories.append(html.unescape(cat.text.strip()))
                     for subcat in cats_elem.findall(".//subcategoria/item"):
                         if subcat.get("name") == "SubCategoria" and subcat.text:
-                            categories.append(subcat.text.strip())
+                            categories.append(html.unescape(subcat.text.strip()))
 
+            title_raw = ""
             title = ""
             if title_elem is not None and title_elem.text:
-                title = title_elem.text.strip()
+                title_raw = html.unescape(title_elem.text.strip())
+                title = _clean_text(title_elem.text.strip())
             elif name_elem is not None and name_elem.text:
-                title = name_elem.text.strip()
+                title_raw = html.unescape(name_elem.text.strip())
+                title = _clean_text(name_elem.text.strip())
 
             source_url = ""
             if web_elem is not None and web_elem.text:
@@ -103,11 +112,13 @@ class RssSourceAdapter(BaseSourceAdapter):
 
             venue = ""
             if venue_elem is not None and venue_elem.text:
-                venue = venue_elem.text.strip()
+                venue = html.unescape(venue_elem.text.strip())
 
+            description_raw = ""
             description = ""
             if body_elem is not None and body_elem.text:
-                description = body_elem.text.strip()
+                description_raw = html.unescape(body_elem.text.strip())
+                description = _clean_text(body_elem.text.strip())
 
             start_at, end_at = _parse_dates(start_date_str, end_date_str, schedule_text)
 
@@ -116,6 +127,7 @@ class RssSourceAdapter(BaseSourceAdapter):
             results.append(
                 {
                     "title": title,
+                    "raw_title": title_raw,
                     "address": address,
                     "neighborhood": locality,
                     "metro": None,
@@ -131,6 +143,7 @@ class RssSourceAdapter(BaseSourceAdapter):
                     "is_toddler_friendly": False,
                     "source_url": source_url,
                     "description": description,
+                    "raw_description": description_raw,
                     "categories": categories,
                 }
             )
@@ -150,6 +163,9 @@ class RssSourceAdapter(BaseSourceAdapter):
         return Event(
             id=uuid.uuid4(),
             title=raw["title"],
+            raw_title=raw.get("raw_title", ""),
+            description=raw.get("description", ""),
+            raw_description=raw.get("raw_description", ""),
             location=Location(
                 address=raw.get("address", ""),
                 neighborhood=raw.get("neighborhood", ""),

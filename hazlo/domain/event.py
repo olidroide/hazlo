@@ -83,6 +83,9 @@ class TicketInfo:
 class Event:
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     title: str = ""
+    raw_title: str = ""
+    description: str = ""
+    raw_description: str = ""
     location: Location | None = None
     start_at: datetime | None = None
     end_at: datetime | None = None
@@ -115,6 +118,9 @@ class Event:
     def to_dict(self) -> dict[str, object]:
         return {
             "title": self.title,
+            "raw_title": self.raw_title,
+            "description": self.description,
+            "raw_description": self.raw_description,
             "location": {
                 "address": self.location.address,
                 "neighborhood": self.location.neighborhood,
