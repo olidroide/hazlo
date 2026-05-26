@@ -1,0 +1,12 @@
+<div class="log-summary">
+    <span class="log-summary-text">
+        Encontrados: {{ found }} | Nuevos: {{ new }} | Saltados: {{ skipped }}
+        | Aprobados: {{ approved }} | Flagged: {{ flagged }}
+        {% if errors > 0 %}| Errores: {{ errors }}{% endif %}
+    </span>
+    {% if errors == 0 %}
+    <span class="badge-green">Sin errores</span>
+    {% else %}
+    <span class="badge-red">{{ errors }} error(es)</span>
+    {% endif %}
+</div>

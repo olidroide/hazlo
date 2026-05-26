@@ -11,6 +11,7 @@ from hazlo.domain.source import Source
 from hazlo.infrastructure.db.models import (
     EventModel,
     ExtractionRunModel,
+    LLMProviderModel,
     ReviewModel,
     SourceModel,
     event_to_model,
@@ -49,9 +50,22 @@ class EventRepository:
         )
         return [model_to_event(m) for m in result.scalars().all()]
 
+    async def exists_by_idempotency_key(self, idempotency_key: str) -> bool:
+        result = await self._session.execute(
+            select(EventModel.id).where(EventModel.idempotency_key == idempotency_key).limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def list_existing_idempotency_keys(self, keys: set[str]) -> set[str]:
+        if not keys:
+            return set()
+        result = await self._session.execute(
+            select(EventModel.idempotency_key).where(EventModel.idempotency_key.in_(keys))
+        )
+        return {k for k in result.scalars().all() if k is not None}
+
     async def save(self, event: Event) -> Event:
-        model = event_to_model(event)
-        self._session.add(model)
+        model = await self._session.merge(event_to_model(event))
         await self._session.commit()
         await self._session.refresh(model)
         return model_to_event(model)
@@ -73,9 +87,8 @@ class EventRepository:
         return model_to_event(model)
 
     async def save_with_review(self, event: Event, review: Review) -> tuple[Event, Review]:
-        event_model = event_to_model(event)
+        event_model = await self._session.merge(event_to_model(event))
         review_model = review_to_model(review)
-        self._session.add(event_model)
         self._session.add(review_model)
         await self._session.commit()
         await self._session.refresh(event_model)
@@ -98,8 +111,7 @@ class SourceRepository:
         return [model_to_source(m) for m in result.scalars().all()]
 
     async def save(self, source: Source) -> Source:
-        model = source_to_model(source)
-        self._session.add(model)
+        model = await self._session.merge(source_to_model(source))
         await self._session.commit()
         await self._session.refresh(model)
         return model_to_source(model)
@@ -181,3 +193,51 @@ class ReviewRepository:
             select(ReviewModel).where(ReviewModel.event_id == event_id).order_by(ReviewModel.reviewed_at.desc())
         )
         return [model_to_review(m) for m in result.scalars().all()]
+
+
+class LLMProviderRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get(self, provider_id: uuid.UUID) -> LLMProviderModel | None:
+        result = await self._session.execute(select(LLMProviderModel).where(LLMProviderModel.id == provider_id))
+        return result.scalar_one_or_none()
+
+    async def list_all(self) -> list[LLMProviderModel]:
+        result = await self._session.execute(select(LLMProviderModel).order_by(LLMProviderModel.priority))
+        return list(result.scalars().all())
+
+    async def get_active(self) -> LLMProviderModel | None:
+        result = await self._session.execute(select(LLMProviderModel).where(LLMProviderModel.is_active))
+        return result.scalar_one_or_none()
+
+    async def save(self, provider: LLMProviderModel) -> LLMProviderModel:
+        provider = await self._session.merge(provider)
+        await self._session.commit()
+        await self._session.refresh(provider)
+        return provider
+
+    async def set_active(self, provider_id: uuid.UUID) -> LLMProviderModel | None:
+        from hazlo.infrastructure.db.models import _utcnow
+
+        await self._session.execute(update(LLMProviderModel).values(is_active=False, updated_at=_utcnow()))
+        stmt = (
+            update(LLMProviderModel)
+            .where(LLMProviderModel.id == provider_id)
+            .values(is_active=True, updated_at=_utcnow())
+            .returning(LLMProviderModel)
+        )
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if model:
+            await self._session.commit()
+        return model
+
+    async def delete(self, provider_id: uuid.UUID) -> bool:
+        result = await self._session.execute(select(LLMProviderModel).where(LLMProviderModel.id == provider_id))
+        model = result.scalar_one_or_none()
+        if model is None:
+            return False
+        await self._session.delete(model)
+        await self._session.commit()
+        return True

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterator
 from datetime import UTC, datetime
-from decimal import Decimal
 
 import pytest
 import pytest_asyncio
@@ -17,13 +16,13 @@ from hazlo.infrastructure.db.repositories import EventRepository, ReviewReposito
 
 
 @pytest.fixture(scope="session")
-def postgres_container() -> PostgresContainer:
+def postgres_container() -> Iterator[PostgresContainer]:
     with PostgresContainer("postgres:16-alpine", driver="asyncpg") as postgres:
         yield postgres
 
 
 @pytest_asyncio.fixture
-async def db_session(postgres_container: PostgresContainer) -> AsyncGenerator[AsyncSession, None]:
+async def db_session(postgres_container: PostgresContainer) -> AsyncGenerator[AsyncSession]:
     url = postgres_container.get_connection_url()
     engine = create_async_engine(url, echo=False)
     async with engine.begin() as conn:
@@ -43,7 +42,7 @@ def _make_event() -> Event:
         location=Location(address="Calle Mayor 1", neighborhood="Centro", metro="Sol"),
         start_at=datetime(2026, 6, 1, 20, 0, tzinfo=UTC),
         end_at=datetime(2026, 6, 1, 22, 0, tzinfo=UTC),
-        price=Price(amount=Decimal("10.00"), is_free=False, notes=None),
+        price=Price(amount_cents=1000, is_free=False, notes=None),
         ticket_info=TicketInfo(url="https://tickets.example.com", notes=None),
         is_children_activity=False,
         is_toddler_friendly=False,

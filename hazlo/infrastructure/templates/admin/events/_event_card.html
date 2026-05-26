@@ -1,18 +1,41 @@
 <div id="event-{{ event.id }}"
      class="bg-white dark:bg-neutral-800 rounded-lg shadow-sm border border-neutral-200 dark:border-neutral-700 p-4 space-y-3">
     <!-- Header -->
-    <div class="flex justify-between items-start">
+    <div class="flex justify-between items-start gap-2">
         <h3 class="text-sm font-semibold text-neutral-900 dark:text-white line-clamp-2">{{ event.title }}</h3>
-        <!-- Status badge -->
-        {% if event.status == 'pending' %}
-        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">Pending</span>
-        {% elif event.status == 'approved' %}
-        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">Approved</span>
-        {% elif event.status == 'rejected' %}
-        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">Rejected</span>
-        {% elif event.status == 'published' %}
-        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">Published</span>
-        {% endif %}
+        <div class="flex flex-shrink-0 gap-1">
+            <!-- Confidence badge -->
+            {% if event.confidence_score is not none %}
+            {% set conf = event.confidence_score %}
+            {% if conf >= 0.9 %}
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" title="Confidence: {{ "%.0f"|format(conf * 100) }}%">
+                {{ "%.0f"|format(conf * 100) }}%
+            </span>
+            {% elif conf >= 0.7 %}
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" title="Confidence: {{ "%.0f"|format(conf * 100) }}%">
+                {{ "%.0f"|format(conf * 100) }}%
+            </span>
+            {% else %}
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" title="Confidence: {{ "%.0f"|format(conf * 100) }}%">
+                {{ "%.0f"|format(conf * 100) }}%
+            </span>
+            {% endif %}
+            {% else %}
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-400" title="No confidence score">
+                --
+            </span>
+            {% endif %}
+            <!-- Status badge -->
+            {% if event.status == 'pending' %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">Pending</span>
+            {% elif event.status == 'approved' %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">Approved</span>
+            {% elif event.status == 'rejected' %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">Rejected</span>
+            {% elif event.status == 'published' %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">Published</span>
+            {% endif %}
+        </div>
     </div>
 
     <!-- Details -->

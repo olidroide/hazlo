@@ -2,6 +2,22 @@
 
 {% block title %}{{ source.name }} - Hazlo Admin{% endblock %}
 
+{% block extra_head %}
+<style>
+.log-success { color: #34d399; }
+.log-error { color: #f87171; }
+.log-info { color: #94a3b8; }
+.log-summary { color: #facc15; }
+.log-icon { display: inline-block; width: 1.2em; }
+.log-details { margin-top: 2px; margin-left: 1.5em; font-size: 0.85em; }
+.log-details summary { color: #64748b; cursor: pointer; }
+.log-details pre { white-space: pre-wrap; word-break: break-all; color: #94a3b8; }
+.log-summary-text { display: block; }
+.badge-green { display: inline-block; background: #065f46; color: #6ee7b7; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; }
+.badge-red { display: inline-block; background: #7f1d1d; color: #fca5a5; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="space-y-6">
     <!-- Header -->
@@ -16,15 +32,51 @@
             hx-swap="outerHTML"
             hx-confirm="¿Estás seguro?"
             class="inline-flex items-center px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md shadow-sm text-sm font-medium text-neutral-700 dark:text-neutral-200 bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700">
+            <span class="btn-spinner mr-2"></span>
             {% if source.is_active %}Desactivar{% else %}Activar{% endif %}
         </button>
     </div>
 
     <!-- Source details -->
     <div class="bg-white dark:bg-neutral-800 shadow-sm rounded-lg overflow-hidden">
-        <div class="px-6 py-4 border-b border-neutral-200 dark:border-neutral-700">
+        <div class="px-6 py-4 border-b border-neutral-200 dark:border-neutral-700 flex justify-between items-center">
             <h2 class="text-lg font-medium text-neutral-900 dark:text-white">Detalles</h2>
+            <div class="flex space-x-2">
+                <button
+                    hx-post="/admin/sources/{{ source.id }}/test-connection"
+                    hx-target="#connection-result"
+                    hx-swap="innerHTML"
+                    class="inline-flex items-center px-3 py-1.5 border border-neutral-300 dark:border-neutral-600 rounded-md text-sm font-medium text-neutral-700 dark:text-neutral-200 bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700">
+                    <span class="btn-spinner mr-1.5"></span>
+                    <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    Probar conexión
+                </button>
+                <button
+                    hx-post="/admin/sources/{{ source.id }}/preview"
+                    hx-target="#preview-result"
+                    hx-swap="innerHTML"
+                    class="inline-flex items-center px-3 py-1.5 border border-teal-300 dark:border-teal-600 rounded-md text-sm font-medium text-teal-700 dark:text-teal-200 bg-teal-50 dark:bg-teal-900/20 hover:bg-teal-100 dark:hover:bg-teal-900/40">
+                    <span class="btn-spinner mr-1.5"></span>
+                    <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                    </svg>
+                    Vista previa
+                </button>
+                <button
+                    onclick="testIntegration('{{ source.id }}')"
+                    class="inline-flex items-center px-3 py-1.5 border border-blue-300 dark:border-blue-600 rounded-md text-sm font-medium text-blue-700 dark:text-blue-200 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40">
+                    <span class="btn-spinner mr-1.5" id="integration-spinner"></span>
+                    <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                    Test Integration
+                </button>
+            </div>
         </div>
+        <div id="connection-result"></div>
         <dl class="divide-y divide-neutral-200 dark:divide-neutral-700">
             <div class="px-6 py-4 grid grid-cols-3 gap-4">
                 <dt class="text-sm font-medium text-neutral-500 dark:text-neutral-400">Tipo</dt>
@@ -33,9 +85,21 @@
             <div class="px-6 py-4 grid grid-cols-3 gap-4">
                 <dt class="text-sm font-medium text-neutral-500 dark:text-neutral-400">URL</dt>
                 <dd class="text-sm text-neutral-900 dark:text-white col-span-2">
+                    {% if source.url %}
                     <a href="{{ source.url }}" target="_blank" class="text-teal-600 hover:text-teal-700">{{ source.url }}</a>
+                    {% else %}
+                    <span class="text-neutral-400">N/A (Email IMAP)</span>
+                    {% endif %}
                 </dd>
             </div>
+            {% if source.config %}
+            <div class="px-6 py-4 grid grid-cols-3 gap-4">
+                <dt class="text-sm font-medium text-neutral-500 dark:text-neutral-400">Configuración</dt>
+                <dd class="text-sm text-neutral-900 dark:text-white col-span-2">
+                    <pre class="bg-neutral-100 dark:bg-neutral-900 p-2 rounded text-xs overflow-auto">{{ source.config }}</pre>
+                </dd>
+            </div>
+            {% endif %}
             <div class="px-6 py-4 grid grid-cols-3 gap-4">
                 <dt class="text-sm font-medium text-neutral-500 dark:text-neutral-400">Estado</dt>
                 <dd class="text-sm text-neutral-900 dark:text-white col-span-2" id="source-status-badge">
@@ -65,6 +129,45 @@
             </div>
         </dl>
     </div>
+
+    <!-- Health metrics -->
+    {% if health and health.total_runs > 0 %}
+    <div class="bg-white dark:bg-neutral-800 shadow-sm rounded-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-neutral-200 dark:border-neutral-700">
+            <h2 class="text-lg font-medium text-neutral-900 dark:text-white">Salud de la fuente</h2>
+        </div>
+        <dl class="divide-y divide-neutral-200 dark:divide-neutral-700">
+            <div class="px-6 py-4 grid grid-cols-4 gap-4">
+                <dt class="text-sm font-medium text-neutral-500 dark:text-neutral-400">Total ejecuciones</dt>
+                <dd class="text-sm text-neutral-900 dark:text-white">{{ health.total_runs }}</dd>
+                <dt class="text-sm font-medium text-neutral-500 dark:text-neutral-400">Tasa de éxito</dt>
+                <dd class="text-sm">
+                    <span class="{% if health.success_rate >= 0.9 %}text-green-600{% elif health.success_rate >= 0.7 %}text-yellow-600{% else %}text-red-600{% endif %}">
+                        {{ "%.0f"|format(health.success_rate * 100) }}%
+                    </span>
+                </dd>
+            </div>
+            <div class="px-6 py-4 grid grid-cols-4 gap-4">
+                <dt class="text-sm font-medium text-neutral-500 dark:text-neutral-400">Media eventos/ejecución</dt>
+                <dd class="text-sm text-neutral-900 dark:text-white">{{ "%.1f"|format(health.avg_events_found) }}</dd>
+                <dt class="text-sm font-medium text-neutral-500 dark:text-neutral-400">Último éxito</dt>
+                <dd class="text-sm text-neutral-900 dark:text-white">
+                    {% if health.last_success %}
+                    {{ health.last_success.strftime('%d/%m/%Y %H:%M') }}
+                    {% else %}
+                    <span class="text-neutral-400">Nunca</span>
+                    {% endif %}
+                </dd>
+            </div>
+            {% if health.last_failure %}
+            <div class="px-6 py-4 grid grid-cols-4 gap-4">
+                <dt class="text-sm font-medium text-neutral-500 dark:text-neutral-400">Último fallo</dt>
+                <dd class="text-sm text-red-600">{{ health.last_failure.strftime('%d/%m/%Y %H:%M') }}</dd>
+            </div>
+            {% endif %}
+        </dl>
+    </div>
+    {% endif %}
 
     <!-- Extraction history -->
     <div class="bg-white dark:bg-neutral-800 shadow-sm rounded-lg overflow-hidden">
@@ -108,5 +211,42 @@
             {% endif %}
         </div>
     </div>
-</div>
+
+        <!-- Test Integration log panel -->
+        <div id="test-log" class="hidden bg-gray-900 text-green-400 font-mono text-xs p-4 rounded-lg h-80 overflow-y-auto"></div>
+
+        <!-- Preview parse result -->
+        <div id="preview-result"></div>
+    </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function testIntegration(sourceId) {
+    var log = htmx.find('#test-log');
+    var spinner = document.getElementById('integration-spinner');
+    log.innerHTML = '<div class="text-gray-500">Conectando...</div>';
+    log.classList.remove('hidden');
+    if (spinner) spinner.style.display = 'inline-block';
+
+    var es = new EventSource('/admin/sources/' + sourceId + '/test/stream');
+
+    es.addEventListener('log_entry', function(e) {
+        log.insertAdjacentHTML('beforeend', e.data);
+        log.scrollTop = log.scrollHeight;
+    });
+
+    es.addEventListener('complete', function(e) {
+        es.close();
+        if (spinner) spinner.style.display = 'none';
+    });
+
+    es.onerror = function() {
+        es.close();
+        if (spinner) spinner.style.display = 'none';
+        log.insertAdjacentHTML('beforeend',
+            '<div class="log-error"><span class="log-icon">✗</span> Connection lost</div>');
+    };
+}
+</script>
 {% endblock %}

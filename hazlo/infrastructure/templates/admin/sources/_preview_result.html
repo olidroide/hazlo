@@ -1,0 +1,38 @@
+<div id="preview-result" class="mt-4">
+    {% if error %}
+    <div class="p-3 rounded-md text-sm bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800">
+        <svg class="inline w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+        {{ error }}
+    </div>
+    {% elif events %}
+    <div class="border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">
+        <div class="px-4 py-2 bg-neutral-50 dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-700">
+            <h3 class="text-sm font-medium text-neutral-900 dark:text-white">
+                Vista previa — {{ events | length }} evento{{ "s" if events | length != 1 else "" }}
+            </h3>
+        </div>
+        <div class="divide-y divide-neutral-200 dark:divide-neutral-700">
+            {% for event in events %}
+            <div class="px-4 py-2 {% if event.error %}bg-red-50 dark:bg-red-900/10{% endif %}">
+                <p class="text-sm font-medium text-neutral-900 dark:text-white">{{ event.title }}</p>
+                {% if event.error and event.detail %}
+                <p class="text-xs text-red-600 dark:text-red-400 mt-1 font-mono">{{ event.detail }}</p>
+                {% endif %}
+                {% if not event.error %}
+                <div class="flex gap-4 mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                    {% if event.location %}<span>{{ event.location }}</span>{% endif %}
+                    {% if event.start_at %}<span>{{ event.start_at }}</span>{% endif %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div class="text-center py-6 text-sm text-neutral-500 dark:text-neutral-400">
+        No se encontraron eventos en esta fuente.
+    </div>
+    {% endif %}
+</div>

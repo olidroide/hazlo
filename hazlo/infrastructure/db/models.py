@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from decimal import Decimal
+from typing import cast
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -33,10 +33,13 @@ class EventModel(Base):
     ticket_info: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     is_children_activity: Mapped[bool] = mapped_column(Boolean, default=False)
     is_toddler_friendly: Mapped[bool] = mapped_column(Boolean, default=False)
+    confidence_score: Mapped[float | None] = mapped_column(nullable=True)
+    agent_review: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     source_url: Mapped[str] = mapped_column(String(1000), nullable=False)
     extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
     source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sources.id"), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
@@ -46,8 +49,9 @@ class SourceModel(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    source_type: Mapped[str] = mapped_column(String(30), nullable=False, default="scraper")
-    url: Mapped[str] = mapped_column(String(1000), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(30), nullable=False, default="rss")
+    url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    config: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     fetch_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -65,6 +69,13 @@ class ExtractionRunModel(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="running")
     events_found: Mapped[int] = mapped_column(Integer, default=0)
+    documents_fetched: Mapped[int] = mapped_column(Integer, default=0)
+    events_extracted: Mapped[int] = mapped_column(Integer, default=0)
+    events_created: Mapped[int] = mapped_column(Integer, default=0)
+    events_flagged: Mapped[int] = mapped_column(Integer, default=0)
+    events_auto_approved: Mapped[int] = mapped_column(Integer, default=0)
+    events_auto_rejected: Mapped[int] = mapped_column(Integer, default=0)
+    snapshot: Mapped[str | None] = mapped_column(JSONB, nullable=True)
     errors: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
@@ -77,6 +88,22 @@ class ReviewModel(Base):
     action: Mapped[str] = mapped_column(String(30), nullable=False)
     changes: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
     reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class LLMProviderModel(Base):
+    __tablename__ = "llm_providers"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    provider_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    api_key_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    max_calls_per_run: Mapped[int] = mapped_column(Integer, default=100)
+    cost_per_1k_tokens_micros: Mapped[int] = mapped_column(Integer, nullable=True, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 def _location_to_dict(location: Location) -> dict[str, object]:
@@ -98,18 +125,18 @@ def _dict_to_location(data: dict[str, object]) -> Location:
 
 def _price_to_dict(price: Price) -> dict[str, object]:
     return {
-        "amount": str(price.amount) if price.amount is not None else None,
+        "amount_cents": price.amount_cents,
         "is_free": price.is_free,
         "notes": price.notes,
     }
 
 
 def _dict_to_price(data: dict[str, object]) -> Price:
-    raw_amount = data.get("amount")
-    amount = Decimal(str(raw_amount)) if raw_amount is not None else None
+    raw_amount_cents = data.get("amount_cents")
+    amount_cents = int(cast(int, raw_amount_cents)) if raw_amount_cents is not None else None
     notes_raw = data.get("notes")
     return Price(
-        amount=amount,
+        amount_cents=amount_cents,
         is_free=bool(data.get("is_free", False)),
         notes=str(notes_raw) if notes_raw is not None else None,
     )
@@ -158,10 +185,13 @@ def event_to_model(event: Event) -> EventModel:
         ticket_info=_ticket_info_to_dict(event.ticket_info),
         is_children_activity=event.is_children_activity,
         is_toddler_friendly=event.is_toddler_friendly,
+        confidence_score=event.confidence_score,
+        agent_review=event.agent_review,
         source_url=event.source_url,
         extracted_at=event.extracted_at,
         status=event.status.value,
         source_id=event.source_id,
+        idempotency_key=event.idempotency_key,
         created_at=event.created_at,
         updated_at=event.updated_at,
     )
@@ -178,10 +208,13 @@ def model_to_event(model: EventModel) -> Event:
         ticket_info=_dict_to_ticket_info(model.ticket_info),
         is_children_activity=model.is_children_activity,
         is_toddler_friendly=model.is_toddler_friendly,
+        confidence_score=model.confidence_score,
+        agent_review=model.agent_review,
         source_url=model.source_url,
         extracted_at=model.extracted_at,
         status=EventStatus(model.status),
         source_id=model.source_id,
+        idempotency_key=model.idempotency_key,
         created_at=model.created_at,
         updated_at=model.updated_at,
     )
@@ -193,6 +226,7 @@ def source_to_model(source: Source) -> SourceModel:
         name=source.name,
         source_type=source.source_type.value,
         url=source.url,
+        config=source.config,
         is_active=source.is_active,
         fetch_interval_minutes=source.fetch_interval_minutes,
         last_run_at=source.last_run_at,
@@ -208,6 +242,7 @@ def model_to_source(model: SourceModel) -> Source:
         name=model.name,
         source_type=SourceType(model.source_type),
         url=model.url,
+        config=model.config if model.config else {},
         is_active=model.is_active,
         fetch_interval_minutes=model.fetch_interval_minutes,
         last_run_at=model.last_run_at,

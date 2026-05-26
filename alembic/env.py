@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from alembic import context
-
 from hazlo.infrastructure.db.models import Base
 from hazlo.settings import get_settings
 

@@ -1,0 +1,41 @@
+<tr id="provider-row-{{ provider.id }}">
+  <td class="px-6 py-4 whitespace-nowrap">{{ provider.name }}</td>
+  <td class="px-6 py-4 whitespace-nowrap">{{ provider.provider_type }}</td>
+  <td class="px-6 py-4 whitespace-nowrap">{{ provider.model }}</td>
+  <td class="px-6 py-4 whitespace-nowrap">
+    {% if provider.is_active %}
+    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Active</span>
+    {% else %}
+    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Inactive</span>
+    {% endif %}
+  </td>
+  <td class="px-6 py-4 whitespace-nowrap">{{ provider.priority }}</td>
+  <td class="px-6 py-4 whitespace-nowrap">{% if provider.cost_per_1k_tokens_micros %}${{ "%.4f"|format(provider.cost_per_1k_tokens_micros / 1000000) }}{% else %}-{% endif %}</td>
+  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+    <span id="provider-test-result"></span>
+    <button
+      hx-post="/admin/llm-providers/{{ provider.id }}/test"
+      hx-swap="none"
+      class="text-indigo-600 hover:text-indigo-900 mr-3"
+    >
+      Test
+    </button>
+    {% if not provider.is_active %}
+    <button
+      hx-post="/admin/llm-providers/{{ provider.id }}/activate"
+      hx-swap="outerHTML"
+      class="text-green-600 hover:text-green-900 mr-3"
+    >
+      Activate
+    </button>
+    {% endif %}
+    <button
+      hx-delete="/admin/llm-providers/{{ provider.id }}"
+      hx-target="#provider-row-{{ provider.id }}"
+      hx-swap="outerHTML"
+      class="text-red-600 hover:text-red-900"
+    >
+      Delete
+    </button>
+  </td>
+</tr>

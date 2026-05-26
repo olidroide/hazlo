@@ -7,9 +7,9 @@ from enum import Enum
 
 
 class SourceType(Enum):
-    SCRAPER = "scraper"
-    API = "api"
-    CSV = "csv"
+    RSS = "rss"
+    WEB = "web"
+    EMAIL = "email"
 
 
 class SourceStatus(Enum):
@@ -21,8 +21,9 @@ class SourceStatus(Enum):
 class Source:
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     name: str = ""
-    source_type: SourceType = SourceType.SCRAPER
-    url: str = ""
+    source_type: SourceType = SourceType.RSS
+    url: str | None = None
+    config: dict = field(default_factory=dict)
     is_active: bool = True
     fetch_interval_minutes: int = 60
     last_run_at: datetime | None = None

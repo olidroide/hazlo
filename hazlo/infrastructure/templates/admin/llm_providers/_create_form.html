@@ -1,0 +1,59 @@
+<div class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center">
+  <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <h2 class="text-lg font-semibold mb-4">Add LLM Provider</h2>
+    <form hx-post="/admin/llm-providers" hx-target="#providers-list" hx-swap="beforeend">
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Provider</label>
+          <select name="provider_type" required id="provider-type"
+                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+            <option value="">-- Select provider --</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="openrouter">OpenRouter</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">API Key</label>
+          <div class="flex gap-2">
+            <input type="password" name="api_key" required id="api-key"
+                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                   placeholder="Paste your API key">
+            <button type="button"
+                    hx-post="/admin/llm-providers/models"
+                    hx-include="#provider-type, #api-key"
+                    hx-target="#models-container"
+                    hx-indicator="#fetch-spinner"
+                    class="mt-1 px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 whitespace-nowrap">
+              <span id="fetch-spinner" class="htmx-indicator">Loading...</span>
+              <span class="htmx-indicator-off">Fetch Models</span>
+            </button>
+          </div>
+        </div>
+        <div id="models-container" class="border rounded-md p-3 bg-gray-50">
+          <p class="text-sm text-gray-400 italic">Select provider and enter API key, then click Fetch Models.</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Name</label>
+          <input type="text" name="name" required
+                 class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                 placeholder="My Provider">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Priority</label>
+          <input type="number" name="priority" value="0"
+                 class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+        </div>
+      </div>
+      <div class="mt-6 flex justify-end space-x-3">
+        <button type="button" onclick="document.getElementById('modal').innerHTML=''"
+                class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+          Cancel
+        </button>
+        <button type="submit"
+                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">
+          Add Provider
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

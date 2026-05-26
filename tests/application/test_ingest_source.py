@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from decimal import Decimal
 
 import pytest
 
+from hazlo.application.services import DedupService, EnrichmentService
 from hazlo.application.use_cases.ingest_source import IngestSource
 from hazlo.domain.event import Event, EventStatus, Location, Price, TicketInfo
 from hazlo.domain.source import Source, SourceType
@@ -17,7 +17,7 @@ class FakeAdapter(BaseSourceAdapter):
         self._raw_events = raw_events or []
         self._raise_on_fetch = raise_on_fetch
 
-    async def fetch(self, source_url: str) -> list[dict]:
+    async def fetch(self, source: Source) -> list[dict]:
         if self._raise_on_fetch:
             msg = "Network error"
             raise ConnectionError(msg)
@@ -30,7 +30,7 @@ class FakeAdapter(BaseSourceAdapter):
             location=Location(address=raw.get("address", ""), neighborhood=""),
             start_at=datetime(2026, 6, 1, 20, 0, tzinfo=UTC),
             end_at=datetime(2026, 6, 1, 22, 0, tzinfo=UTC),
-            price=Price(amount=Decimal("10"), is_free=False),
+            price=Price(amount_cents=1000, is_free=False),
             ticket_info=TicketInfo(url=raw.get("ticket_url")),
             source_url=raw.get("source_url", ""),
             extracted_at=datetime.now(UTC),
@@ -40,7 +40,7 @@ class FakeAdapter(BaseSourceAdapter):
 def _make_source() -> Source:
     return Source(
         name="Test Source",
-        source_type=SourceType.SCRAPER,
+        source_type=SourceType.RSS,
         url="https://example.com",
     )
 
@@ -54,10 +54,20 @@ def _make_raw_event(url: str = "https://example.com/event/1") -> dict:
     }
 
 
+def _make_use_case(adapter: BaseSourceAdapter) -> IngestSource:
+    enrichment = EnrichmentService()
+    dedup = DedupService()
+    return IngestSource(
+        adapter_registry={"rss": adapter},
+        enrichment_service=enrichment,
+        dedup_service=dedup,
+    )
+
+
 @pytest.mark.asyncio
 async def test_ingest_creates_pending_events() -> None:
     adapter = FakeAdapter(raw_events=[_make_raw_event(), _make_raw_event("https://example.com/event/2")])
-    use_case = IngestSource(adapter_registry={"scraper": adapter})
+    use_case = _make_use_case(adapter)
     source = _make_source()
 
     result = await use_case.execute(source=source, existing_urls=set())
@@ -73,7 +83,7 @@ async def test_ingest_creates_pending_events() -> None:
 @pytest.mark.asyncio
 async def test_ingest_skips_duplicate_events() -> None:
     adapter = FakeAdapter(raw_events=[_make_raw_event()])
-    use_case = IngestSource(adapter_registry={"scraper": adapter})
+    use_case = _make_use_case(adapter)
     source = _make_source()
 
     result = await use_case.execute(source=source, existing_urls={"https://example.com/event/1"})
@@ -87,7 +97,7 @@ async def test_ingest_skips_duplicate_events() -> None:
 @pytest.mark.asyncio
 async def test_ingest_records_extraction_run() -> None:
     adapter = FakeAdapter(raw_events=[_make_raw_event()])
-    use_case = IngestSource(adapter_registry={"scraper": adapter})
+    use_case = _make_use_case(adapter)
     source = _make_source()
 
     result = await use_case.execute(source=source, existing_urls=set())
@@ -101,7 +111,7 @@ async def test_ingest_records_extraction_run() -> None:
 @pytest.mark.asyncio
 async def test_ingest_handles_adapter_error_gracefully() -> None:
     adapter = FakeAdapter(raise_on_fetch=True)
-    use_case = IngestSource(adapter_registry={"scraper": adapter})
+    use_case = _make_use_case(adapter)
     source = _make_source()
 
     result = await use_case.execute(source=source, existing_urls=set())

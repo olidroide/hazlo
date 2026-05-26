@@ -34,7 +34,8 @@
             hx-post="/admin/sources/{{ source.id }}/run-now"
             hx-target="#source-{{ source.id }}"
             hx-swap="outerHTML"
-            class="text-teal-600 hover:text-teal-700">
+            class="text-teal-600 hover:text-teal-700 inline-flex items-center">
+            <span class="btn-spinner mr-1"></span>
             Ejecutar ahora
         </button>
         <button
@@ -42,7 +43,8 @@
             hx-target="#source-{{ source.id }}"
             hx-swap="outerHTML"
             hx-confirm="¿Estás seguro?"
-            class="text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white">
+            class="text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white inline-flex items-center">
+            <span class="btn-spinner mr-1"></span>
             {% if source.is_active %}Desactivar{% else %}Activar{% endif %}
         </button>
         <a href="/admin/sources/{{ source.id }}" class="text-teal-600 hover:text-teal-700">Ver</a>

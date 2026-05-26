@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Iterator
 from datetime import UTC, datetime
-from decimal import Decimal
 
 import pytest
 import pytest_asyncio
@@ -13,17 +12,17 @@ from testcontainers.postgres import PostgresContainer
 from hazlo.domain.event import Event, EventStatus, Location, Price, TicketInfo
 from hazlo.domain.source import Source, SourceType
 from hazlo.infrastructure.db.models import Base
-from hazlo.infrastructure.db.repositories import EventRepository
+from hazlo.infrastructure.db.repositories import EventRepository, SourceRepository
 
 
 @pytest.fixture(scope="session")
-def postgres_container() -> Generator[PostgresContainer, None, None]:
+def postgres_container() -> Iterator[PostgresContainer]:
     with PostgresContainer("postgres:16-alpine", driver="asyncpg") as postgres:
         yield postgres
 
 
 @pytest_asyncio.fixture
-async def db_session(postgres_container: PostgresContainer) -> AsyncGenerator[AsyncSession, None]:
+async def db_session(postgres_container: PostgresContainer) -> AsyncGenerator[AsyncSession]:
     url = postgres_container.get_connection_url()
     engine = create_async_engine(url, echo=False)
     async with engine.begin() as conn:
@@ -43,7 +42,7 @@ def _make_event() -> Event:
         location=Location(address="Calle Mayor 1", neighborhood="Centro", metro="Sol"),
         start_at=datetime(2026, 6, 1, 20, 0, tzinfo=UTC),
         end_at=datetime(2026, 6, 1, 22, 0, tzinfo=UTC),
-        price=Price(amount=Decimal("15.00"), is_free=False, notes=None),
+        price=Price(amount_cents=1500, is_free=False, notes=None),
         ticket_info=TicketInfo(url="https://tickets.example.com", notes=None),
         is_children_activity=False,
         is_toddler_friendly=False,
@@ -57,7 +56,7 @@ def _make_source() -> Source:
     return Source(
         id=uuid.uuid4(),
         name="Test Source",
-        source_type=SourceType.SCRAPER,
+        source_type=SourceType.RSS,
         url="https://example.com",
         is_active=True,
         fetch_interval_minutes=30,
@@ -107,3 +106,86 @@ async def test_update_event_status(db_session: AsyncSession) -> None:
     fetched = await repo.get(saved.id)
     assert fetched is not None
     assert fetched.status == EventStatus.APPROVED
+
+
+@pytest.mark.asyncio
+async def test_save_with_review_updates_existing_event(db_session: AsyncSession) -> None:
+    """save_with_review must MERGE (upsert), not INSERT — no IntegrityError."""
+    from hazlo.domain.review import Review, ReviewAction
+
+    repo = EventRepository(db_session)
+    event = _make_event()
+    saved = await repo.save(event)
+
+    updated = _make_event()
+    updated.id = saved.id
+    updated.title = "Updated Title"
+    updated.status = EventStatus.APPROVED
+
+    review = Review(
+        event_id=saved.id,
+        reviewer_id=uuid.uuid4(),
+        action=ReviewAction.APPROVE,
+        changes={"title": "Updated Title"},
+    )
+
+    result_event, result_review = await repo.save_with_review(updated, review)
+
+    assert result_event.title == "Updated Title"
+    assert result_event.status == EventStatus.APPROVED
+    assert result_review.action == ReviewAction.APPROVE
+
+    fetched = await repo.get(saved.id)
+    assert fetched is not None
+    assert fetched.title == "Updated Title"
+    assert fetched.status == EventStatus.APPROVED
+
+
+@pytest.mark.asyncio
+async def test_save_with_review_reject_event(db_session: AsyncSession) -> None:
+    """Rejecting an existing event must work without IntegrityError."""
+    from hazlo.domain.review import Review, ReviewAction
+
+    repo = EventRepository(db_session)
+    event = _make_event()
+    saved = await repo.save(event)
+
+    updated = _make_event()
+    updated.id = saved.id
+    updated.status = EventStatus.REJECTED
+
+    review = Review(
+        event_id=saved.id,
+        reviewer_id=uuid.uuid4(),
+        action=ReviewAction.REJECT,
+    )
+
+    result_event, _ = await repo.save_with_review(updated, review)
+    assert result_event.status == EventStatus.REJECTED
+
+    fetched = await repo.get(saved.id)
+    assert fetched is not None
+    assert fetched.status == EventStatus.REJECTED
+
+
+@pytest.mark.asyncio
+async def test_source_save_upsert(db_session: AsyncSession) -> None:
+    """SourceRepository.save() must MERGE (upsert), not INSERT — no IntegrityError on re-save."""
+    repo = SourceRepository(db_session)
+    source = _make_source()
+    saved = await repo.save(source)
+
+    updated = _make_source()
+    updated.id = saved.id
+    updated.name = "Updated Source Name"
+    updated.is_active = False
+
+    result = await repo.save(updated)
+
+    assert result.name == "Updated Source Name"
+    assert result.is_active is False
+
+    fetched = await repo.get(saved.id)
+    assert fetched is not None
+    assert fetched.name == "Updated Source Name"
+    assert fetched.is_active is False

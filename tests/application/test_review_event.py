@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from decimal import Decimal
+from typing import Any, cast
 
 import pytest
 
@@ -10,24 +10,45 @@ from hazlo.application.use_cases.review_event import ReviewEvent
 from hazlo.domain.event import Event, EventStatus, InvalidTransitionError, Location, Price, TicketInfo
 from hazlo.domain.review import ReviewAction
 
+_NOT_SET = object()
 
-def _make_event(**kwargs: object) -> Event:
-    defaults: dict[str, object] = {
-        "id": uuid.uuid4(),
-        "title": "Test Event",
-        "location": Location(address="Calle Mayor 1", neighborhood="Centro", metro="Sol"),
-        "start_at": datetime(2026, 6, 1, 20, 0, tzinfo=UTC),
-        "end_at": datetime(2026, 6, 1, 22, 0, tzinfo=UTC),
-        "price": Price(amount=Decimal("10.00"), is_free=False, notes=None),
-        "ticket_info": TicketInfo(url="https://tickets.example.com", notes=None),
-        "is_children_activity": False,
-        "is_toddler_friendly": False,
-        "source_url": "https://source.example.com/event",
-        "extracted_at": datetime(2026, 5, 16, 10, 0, tzinfo=UTC),
-        "status": EventStatus.PENDING,
+
+def _make_event(
+    id: uuid.UUID | object = _NOT_SET,
+    title: str = "Test Event",
+    location: Location | object = _NOT_SET,
+    start_at: datetime | object = _NOT_SET,
+    end_at: datetime | object = _NOT_SET,
+    price: Price | object = _NOT_SET,
+    ticket_info: TicketInfo | object = _NOT_SET,
+    is_children_activity: bool = False,
+    is_toddler_friendly: bool = False,
+    source_url: str = "https://source.example.com/event",
+    extracted_at: datetime | object = _NOT_SET,
+    status: EventStatus = EventStatus.PENDING,
+    source_id: uuid.UUID | object = _NOT_SET,
+) -> Event:
+    kwargs: dict[str, Any] = {
+        "id": uuid.uuid4() if id is _NOT_SET else id,
+        "title": title,
+        "location": location
+        if location is not _NOT_SET
+        else Location(address="Calle Mayor 1", neighborhood="Centro", metro="Sol"),
+        "start_at": start_at if start_at is not _NOT_SET else datetime(2026, 6, 1, 20, 0, tzinfo=UTC),
+        "end_at": end_at if end_at is not _NOT_SET else datetime(2026, 6, 1, 22, 0, tzinfo=UTC),
+        "price": price if price is not _NOT_SET else Price(amount_cents=1000, is_free=False, notes=None),
+        "ticket_info": ticket_info
+        if ticket_info is not _NOT_SET
+        else TicketInfo(url="https://tickets.example.com", notes=None),
+        "is_children_activity": is_children_activity,
+        "is_toddler_friendly": is_toddler_friendly,
+        "source_url": source_url,
+        "extracted_at": extracted_at if extracted_at is not _NOT_SET else datetime(2026, 5, 16, 10, 0, tzinfo=UTC),
+        "status": status,
     }
-    defaults.update(kwargs)
-    return Event(**{k: v for k, v in defaults.items()})
+    if source_id is not _NOT_SET:
+        kwargs["source_id"] = source_id
+    return Event(**{k: v for k, v in kwargs.items()})
 
 
 def test_approve_pending_event_changes_status() -> None:
@@ -78,7 +99,7 @@ def test_edit_captures_diff_in_review() -> None:
     )
     assert review.action == ReviewAction.EDIT
     assert "title" in review.changes
-    diff = review.changes["title"]
+    diff = cast(dict[str, str], review.changes["title"])
     assert diff["before"] == "Original Title"
     assert diff["after"] == "New Title"
 
