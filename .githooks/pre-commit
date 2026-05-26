@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# TDD enforcement: if hazlo/ source changes, tests/ must also change.
+# Exceptions: __init__.py, templates/ (HTML), static/ (CSS).
+set -euo pipefail
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+
+SRC_CHANGES=()
+TEST_CHANGES=()
+
+while IFS= read -r f; do
+    case "$f" in
+        hazlo/__init__.py)         continue ;;
+        hazlo/infrastructure/templates/*) continue ;;
+        hazlo/static/*)            continue ;;
+        hazlo/*.py|hazlo/**/*.py)  SRC_CHANGES+=("$f") ;;
+        tests/*.py|tests/**/*.py)  TEST_CHANGES+=("$f") ;;
+        docker/*)                  continue ;;  # infra, not logic
+        alembic/*)                 continue ;;  # migrations
+        *)                         continue ;;
+    esac
+done <<< "$STAGED"
+
+if [ ${#SRC_CHANGES[@]} -gt 0 ] && [ ${#TEST_CHANGES[@]} -eq 0 ]; then
+    echo "========================================================"
+    echo "  TDD VIOLATION: source changes without test changes"
+    echo "========================================================"
+    echo ""
+    echo "  Source files changed (hazlo/):"
+    for f in "${SRC_CHANGES[@]}"; do
+        echo "    $f"
+    done
+    echo ""
+    echo "  Test files changed (tests/): NONE"
+    echo ""
+    echo "  Write the test FIRST, then commit together."
+    echo "  To bypass (emergency only): git commit --no-verify"
+    echo ""
+    exit 1
+fi
+
+exit 0

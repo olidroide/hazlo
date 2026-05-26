@@ -1,357 +1,475 @@
-# Hazlo
-
-Smart event agenda with human review and source administration panel.
-
-> Discover, normalize, and review events from multiple sources before showing them to your users.
-
----
-
-## Table of Contents
-
-- [Vision](#vision)
-- [Key Features](#key-features)
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Event Data Model](#event-data-model)
-- [Source Administration Panel](#source-administration-panel)
-- [Human Review Flow](#human-review-flow)
-- [Getting Started](#getting-started)
-- [Running with Docker Compose](#running-with-docker-compose)
-- [Developer Workflow](#developer-workflow)
-- [Testing](#testing)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [License](#license)
+<p align="center">
+  <h1 align="center">Hazlo</h1>
+  <p align="center">
+    <strong>Smart event agenda with human review and source administration</strong>
+  </p>
+  <p align="center">
+    Discover, normalize, and review events from multiple sources before showing them to your users.
+  </p>
+  <p align="center">
+    <a href="#getting-started">Getting Started</a>
+    &middot;
+    <a href="#architecture">Architecture</a>
+    &middot;
+    <a href="#human-review-flow">Review Flow</a>
+    &middot;
+    <a href="CONTRIBUTING.md">Contributing</a>
+  </p>
+</p>
 
 ---
 
-## Vision
-
-hazlo is an event agenda designed for modern cities, focused on data quality and
-human editorial control. Its goal is to aggregate events from multiple sources,
-normalize and enrich them, and let a person review each event before it becomes
-visible to the public.
+[![Python 3.13+](https://img.shields.io/badge/Python-3.13%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-latest-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![License: HSEL-1.0](https://img.shields.io/badge/License-HSEL--1.0-blueviolet)](LICENSE)
+[![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-D7FF64?logo=ruff&logoColor=black)](https://docs.astral.sh/ruff/)
 
 ---
+
+## About
+
+**hazlo** is an event agenda designed for modern cities, focused on data quality and
+human editorial control. It aggregates events from multiple sources, normalizes and
+enriches them, and lets a person review each event before it becomes visible to the
+public — ensuring accurate, trustworthy event listings.
+
+### Why "hazlo"?
+
+*Hazlo* means "do it" in Spanish — a call to action. The project empowers communities
+to curate high-quality event data, bridging the gap between automated data collection
+and human editorial judgment.
 
 ## Key Features
 
-- Data ingestion from multiple configurable sources (websites, APIs, feeds, etc.).
-- Source administration panel to:
-  - Add new sources.
-  - Verify their parsing.
-  - Configure extraction frequency.
-  - View last status (success/error) and extraction history.
-  - Trigger manual extractions on demand.
-- Event normalization to a common model, ready to be searched and filtered.
-- Human-in-the-loop review flow to approve/edit events before publishing.
-- Event classification:
-  - Children's activities.
-  - Events suitable for toddlers.
-- Traceability focus:
-  - Record of when and from where each event was extracted.
-  - Information on what changes were made during manual review.
-- Scheduled ingestion via Prefect (every 30 minutes by default).
-
----
+- **Multi-source ingestion** — RSS, Web, and Email source adapters with auto-normalization
+- **Source administration panel** — Add, verify, configure, and trigger extractions on demand
+- **Event normalization** — All sources mapped to a common data model
+- **Event enrichment** — Auto-classify children's activities and toddler-friendly events via LLM
+- **Human-in-the-loop review** — Approve, edit, or reject events before publishing
+- **LLM provider management** — Configure Gemini and OpenRouter providers with admin UI
+- **Circuit breaker** — Fault-tolerant LLM calls with automatic fallback across providers
+- **Full traceability** — Track extraction origin, timestamps, and manual review changes
+- **Scheduled ingestion** — Prefect-powered flows running every 30 minutes
+- **SSE test integration** — Real-time log streaming for source pipeline testing
 
 ## Architecture
 
 hazlo follows **DDD & Clean Architecture** principles, clearly separating layers:
 
-- **Domain**
-  - Entities and Value Objects for events, sources, and reviews.
-  - Pure business logic (no framework dependencies).
-- **Application**
-  - Use cases (application services) such as:
-    - `IngestSource`
-    - `ReviewEvent`
-  - Flow orchestration (ingestion → normalization → review → publishing).
-- **Infrastructure**
-  - Repositories (async SQLAlchemy against PostgreSQL).
-  - Source adapters (scrapers, HTTP clients, etc.).
-  - HTTP API (FastAPI) and web layer (HTMX + Jinja2).
-  - Prefect for scheduled task execution.
+```
+hazlo/
+├── domain/                     # Entities, value objects, business rules
+│   ├── event.py                # Event, Location, Price, TicketInfo, EventStatus
+│   ├── source.py               # Source, SourceType, SourceStatus
+│   ├── review.py               # Review, ReviewAction, transitions
+│   ├── circuit_breaker.py      # LLM fault tolerance (CLOSED→OPEN→HALF_OPEN)
+│   └── llm_provider.py         # LLM provider entity
+├── application/                # Use cases + domain services
+│   ├── use_cases/
+│   │   ├── ingest_source.py         # IngestSource
+│   │   ├── review_event.py          # ReviewEvent
+│   │   └── create_event_from_source.py
+│   └── services/
+│       ├── enrichment_service.py    # Normalize dates, prices, addresses
+│       ├── quality_classifier.py    # LLM-based event classification
+│       ├── review_engine.py         # Auto-approve/flag based on confidence
+│       └── dedup_service.py         # Duplicate detection via title similarity
+├── infrastructure/             # Frameworks, DB, API, adapters
+│   ├── adapters/               # Source connectors (RSS, Web, Email)
+│   │   ├── base.py             # BaseSourceAdapter interface
+│   │   ├── rss_adapter.py
+│   │   ├── web_adapter.py
+│   │   └── email_adapter.py
+│   ├── api/                    # FastAPI routes + Jinja2 templates
+│   │   └── routes/
+│   │       ├── admin_sources.py
+│   │       ├── admin_events.py
+│   │       └── admin_llm_providers.py
+│   ├── db/                     # SQLAlchemy models + repositories
+│   ├── llm/                    # LLM client + providers + prompts
+│   │   ├── client.py           # LLMClient: routing + circuit breaker
+│   │   └── providers/
+│   │       ├── base.py         # LLMProvider ABC + ModelInfo
+│   │       ├── gemini.py
+│   │       └── openrouter.py
+│   ├── prefect/                # Scheduled flows + deployments
+│   └── templates/              # Jinja2 + HTMX templates
+├── static/                     # Tailwind CSS (input.css + compiled output.css)
+└── main.py                     # FastAPI app entry point
+```
 
-This separation allows evolving the domain model and data sources without
-breaking the public interface.
-
----
+| Layer | Responsibility | Dependencies |
+|-------|---------------|-------------|
+| **Domain** | Business entities, value objects, rules | None (pure Python) |
+| **Application** | Use cases, domain services | Domain only |
+| **Infrastructure** | DB, HTTP, adapters, scheduler | Domain + Application |
 
 ## Tech Stack
 
-- **Backend**
-  - Python 3.12+
-  - FastAPI (HTTP API and server-side views)
-  - Pydantic v2 (input/output models and configuration)
-  - SQLAlchemy 2.x async + PostgreSQL
-- **Frontend**
-  - HTMX (progressive interactions, HATEOAS)
-  - Jinja2 (templates)
-  - Tailwind CSS (utility styles)
-- **Task scheduling**
-  - Prefect 3.x (flows, deployments, worker)
-- **Static typing & code quality**
-  - ty (static type checker, strict mode)
-  - Ruff (linter and formatter)
-- **Packaging, env & tooling**
-  - uv (package & project manager, environments, lockfile)
-  - mise (dev tool / env manager and task runner)
-- **Testing**
-  - pytest
-  - Factory Boy
-  - Testcontainers (PostgreSQL and other external services in Docker)
-- **Infrastructure**
-  - Docker / Docker Compose for Prefect server, worker, and PostgreSQL.
-
----
+| Category | Technology |
+|----------|------------|
+| **Language** | Python 3.13+ |
+| **API & Web** | FastAPI (HTTP API + server-side views) |
+| **Validation** | Pydantic v2 |
+| **ORM** | SQLAlchemy 2.x async + PostgreSQL |
+| **Frontend** | HTMX + Jinja2 + Tailwind CSS v4 |
+| **LLM** | Gemini + OpenRouter with encrypted API key storage |
+| **Scheduling** | Prefect 3.x |
+| **Type Checking** | ty |
+| **Linting & Formatting** | Ruff |
+| **Package Manager** | uv |
+| **Tool Manager** | mise |
+| **Testing** | pytest + Testcontainers |
+| **Infrastructure** | Docker + Docker Compose |
 
 ## Event Data Model
 
-Each event exposed by hazlo is normalized to a common model that includes at minimum:
+Each event is normalized to a common model:
 
-- **Title**: event name.
-- **Event location**
-  - Full address.
-  - Neighborhood.
-  - Nearest metro stop (or other relevant transit).
-- **Dates and times**
-  - Start time.
-  - End time.
-- **Price**
-  - Amount (if applicable).
-  - Free entry or discount information.
-- **Ticket sales**
-  - URL or point of sale (required if tickets are sold).
-  - Additional notes (e.g. "limited tickets", "box office only").
-- **Classification**
-  - Children's activity flag.
-  - Toddler-friendly flag.
-- **Metadata**
-  - Original source (URL, external identifier).
-  - Extraction date.
-  - Status in the flow (pending review, approved, rejected, published).
-
----
+| Field | Description |
+|-------|-------------|
+| `title` | Event name |
+| `location` | Address, neighborhood, nearest metro stop |
+| `start_at` / `end_at` | Start and end timestamps |
+| `price` | Amount in cents, free/discount info |
+| `ticket_info` | URL or point of sale (required if paid) |
+| `is_children_activity` | Auto-classified children's activity flag |
+| `is_toddler_friendly` | Auto-classified toddler-friendly flag |
+| `confidence_score` | LLM classification confidence (0.0–1.0) |
+| `agent_review` | LLM review metadata (raw response, reasoning) |
+| `source_url` | Original source URL |
+| `idempotency_key` | Deduplication key (source URL + title hash) |
+| `status` | `pending` → `approved` → `published` (rejected is terminal) |
 
 ## Source Administration Panel
 
-The source administration panel is designed to give the content manager full
-control over where data comes from and how it is processed:
+| View | Capabilities |
+|------|-------------|
+| **Source list** | Name, type, status, last run result, on-demand extraction |
+| **Source detail** | Parsing config, extraction frequency, raw/normalized data preview |
+| **Extraction history** | Run timestamps, new/updated counts, error debug messages |
+| **Test integration** | SSE live log streaming for full pipeline testing |
 
-- Source list:
-  - Source name.
-  - Type (web scraping, API, CSV, etc.).
-  - Current status (active/inactive/running).
-  - Last run and result (success/error).
-  - "Ejecutar ahora" button for on-demand extraction.
-- Source detail:
-  - Parsing configuration.
-  - Extraction frequency.
-  - Preview of raw data and normalized result.
-- Extraction history:
-  - When each extraction was run.
-  - Number of new/updated events.
-  - Parsing errors with debug messages.
+**Routes:**
 
----
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/sources` | List all sources |
+| `POST` | `/admin/sources` | Create a new source |
+| `GET` | `/admin/sources/{id}` | Source detail + health + history |
+| `PATCH` | `/admin/sources/{id}/toggle` | Activate/deactivate source |
+| `POST` | `/admin/sources/{id}/run-now` | Trigger on-demand extraction |
+| `POST` | `/admin/sources/{id}/test-connection` | Test source connectivity |
+| `POST` | `/admin/sources/{id}/preview` | Preview parsed events |
+| `GET` | `/admin/sources/{id}/test/stream` | SSE live test pipeline log |
 
 ## Human Review Flow
 
-Each event goes through a human-in-the-loop flow before becoming visible in the
-public agenda:
+```
+┌──────────┐     ┌──────────┐     ┌──────────┐     ┌───────────┐
+│  Ingest  │────▶│  Review  │────▶│ Approve  │────▶│ Published │
+│ (auto)   │     │ (human)  │     │ (human)  │     │  (public) │
+└──────────┘     └──────────┘     └──────────┘     └───────────┘
+                       │
+                       ▼
+                 ┌──────────┐
+                 │ Rejected │
+                 └──────────┘
+```
 
-1. **Ingestion**
-   The system extracts data from configured sources and creates/updates events
-   in "pending review" status. Runs every 30 minutes via Prefect, or manually
-   from the admin panel.
-2. **Review**
-   A reviewer:
-   - Verifies title, location, dates, price, and ticket link.
-   - Completes or corrects information.
-   - Marks whether it is a children's activity or toddler-friendly.
-   - Approves or rejects the event.
-3. **Publishing**
-   Once approved, the event moves to "published" status and appears in the agenda.
-4. **Audit**
-   Records who reviewed the event, what changes were made, and when.
-   Accessible via "Ver historial" on each event card.
+1. **Ingestion** — System extracts from sources; events created as `pending`
+2. **Classification** — LLM auto-classifies events (children's activity, toddler-friendly)
+3. **Auto-approve** — High-confidence events auto-approved (threshold: 0.95)
+4. **Review** — Human verifies flagged events; can approve, edit, or reject
+5. **Audit** — Full record of who reviewed what, when, and what changed
 
-This flow allows automating ingestion while maintaining editorial control and
-data quality.
+**Review routes:**
 
----
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/events?status=pending` | Review queue |
+| `GET` | `/admin/events/{id}` | Event detail card |
+| `PATCH` | `/admin/events/{id}/review` | Approve/reject/edit event |
+| `GET` | `/admin/events/{id}/audit` | Audit trail for an event |
+
+## LLM Provider Admin
+
+Manage LLM API keys and model selection via the admin panel at `/admin/llm-providers`:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/llm-providers` | List configured providers |
+| `POST` | `/admin/llm-providers` | Add a new provider (encrypted API key) |
+| `POST` | `/admin/llm-providers/models` | Fetch available models from provider API |
+| `POST` | `/admin/llm-providers/{id}/test` | Test provider connection |
+| `POST` | `/admin/llm-providers/{id}/activate` | Set as active provider |
+| `DELETE` | `/admin/llm-providers/{id}` | Remove provider |
+
+API keys are encrypted at rest using Fernet symmetric encryption
+with `HAZLO_SECRET_KEY`. The circuit breaker automatically opens after
+3 consecutive failures (60s timeout) and routes to fallback providers.
 
 ## Getting Started
 
-> Assumes a local development environment with PostgreSQL available.
-> Python and tools are managed by `mise` and `uv`.
+### Prerequisites
 
-### Quick start (app only, external DB)
+- [Python 3.13+](https://www.python.org/)
+- [mise](https://mise.jdx.dev/) — tool version manager and task runner
+- [uv](https://docs.astral.sh/uv/) — package manager
+- [Docker](https://www.docker.com/) — for PostgreSQL, Redis, and Prefect
 
-1. **Install mise and uv (once per machine)**
+### Quick Start
+
+1. **Install mise and uv**
 
    ```bash
    curl https://mise.run | sh
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
-2. **Clone and setup**
+2. **Clone and set up the project**
 
    ```bash
-   git clone https://github.com/<your-username>/hazlo.git
+   git clone https://github.com/oliverma/hazlo.git
    cd hazlo
-   mise install
+   mise install          # install Python + tools from .mise.toml
    uv venv && source .venv/bin/activate
-   uv sync
+   uv sync               # install dependencies
    ```
 
-3. **Configure `.env`**
-
-   ```env
-   DATABASE_URL=postgresql+asyncpg://hazlo:hazlo@localhost:5433/hazlo
-   HAZLO_ENV=development
-   ```
-
-4. **Run PostgreSQL** (if not already running)
+3. **Configure environment**
 
    ```bash
-   docker run -d --name hazlo-postgres \
-     -e POSTGRES_USER=hazlo -e POSTGRES_PASSWORD=hazlo -e POSTGRES_DB=hazlo \
-     -p 5433:5432 postgres:16-alpine
+   cp .env.example .env
+   # Edit .env with your settings
    ```
 
-5. **Migrate and start**
+   Key variables (see [`.env.example`](.env.example)):
+
+   | Variable | Default | Description |
+   |----------|---------|-------------|
+   | `DATABASE_URL` | `postgresql+asyncpg://hazlo:hazlo@localhost:5433/hazlo` | PostgreSQL connection |
+   | `HAZLO_ENV` | `dev` | `dev`, `development`, `production`, or `test` |
+   | `HAZLO_SECRET_KEY` | — | Fernet key for encrypting LLM API keys (required) |
+   | `ADMIN_USER` / `ADMIN_PASSWORD` | `admin` / — | Basic auth credentials for admin panel |
+   | `AUTO_APPROVE_THRESHOLD` | `0.95` | Confidence threshold for auto-approval |
+   | `VERIFY_SSL` | `true` | SSL verification for outbound HTTP requests |
+   | `CA_BUNDLE` | — | Path to corporate CA bundle (behind proxy) |
+   | `HAZLO_AUTO_MIGRATE` | `1` | Run Alembic migrations on startup (set `0` to disable) |
+
+4. **Start infrastructure**
 
    ```bash
-   mise run migrate
-   mise run dev
+   docker compose up -d
+   ```
+
+   On startup, the hazlo container auto-runs database migrations. The
+   prefect-worker container creates the `local-pool` work pool and deploys
+   two flows: `every-30-minutes` (scheduled) and `manual-trigger` (on-demand).
+
+5. **Start the server**
+
+   ```bash
+   mise run dev        # migrations auto-run on startup
    ```
 
 6. **Verify**
 
-   - Admin panel: http://127.0.0.1:8000/admin/sources
-   - Event review: http://127.0.0.1:8000/admin/events?status=pending
+   - Admin panel: <http://127.0.0.1:8000/admin/sources>
+   - Event review: <http://127.0.0.1:8000/admin/events?status=pending>
+   - LLM providers: <http://127.0.0.1:8000/admin/llm-providers>
+   - Prefect UI: <http://localhost:4200>
 
----
-
-## Running with Docker Compose
-
-For the full stack including Prefect server and worker:
+### Running with Docker Compose
 
 ```bash
-# Start all infrastructure services (Postgres, Prefect server, worker, Redis)
 docker compose up -d
-
-# Wait for services to be healthy (Prefect takes ~60s to start)
-docker compose ps
-
-# Run migrations against the app database
-# (use your local .env pointing to the Docker Postgres or a separate one)
-mise run migrate
-
-# Start the FastAPI app
-mise run dev
 ```
 
-### Prefect UI
+All services auto-configure:
 
-Once running, access the Prefect dashboard at:
-- http://localhost:4200
+| Service | Role |
+|---------|------|
+| `postgres` | Database (PostgreSQL 14, port 5433 on host) |
+| `redis` | Cache and message broker (port 6380 on host) |
+| `hazlo` | FastAPI app (port 8000) — runs migrations on entry |
+| `prefect-server` | Prefect API + UI (port 4200) |
+| `prefect-worker` | Executes scheduled and on-demand ingest flows |
 
-### Deploy flows
+### Prefect
 
-```bash
-mise run deploy-flows
-```
+| URL / Command | Description |
+|---------------|-------------|
+| <http://localhost:4200> | Prefect UI dashboard |
+| `mise run deploy-flows` | Re-deploy flows after code changes |
+| `bash scripts/setup-prefect.sh` | Manual local Prefect setup (outside Docker) |
 
-This registers:
-- `ingest-all-sources` — runs every 30 minutes
-- `ingest-single-source` — triggered manually or via API
+**Deployed flows:**
 
-### Prefect tasks
-
-```bash
-mise run prefect-server   # Start Prefect server locally
-mise run prefect-worker   # Start a worker for the default pool
-mise run deploy-flows     # Deploy flows to Prefect
-```
-
----
+| Flow | Schedule | Description |
+|------|----------|-------------|
+| `ingest-all-sources` | Every 30 min | Ingest from all active sources |
+| `ingest-single-source` | Manual trigger | Ingest from a specific source by ID |
 
 ## Developer Workflow
 
-Common local commands using `mise` tasks:
-
 | Task | Command | Description |
 |------|---------|-------------|
-| `dev` | `mise run dev` | Start FastAPI in dev mode |
-| `test` | `mise run test` | Run pytest |
-| `lint` | `mise run lint` | Run Ruff linter |
-| `fmt` | `mise run fmt` | Run Ruff formatter |
-| `typecheck` | `mise run typecheck` | Run ty type checker |
-| `migrate` | `mise run migrate` | Apply Alembic migrations |
-| `prefect-server` | `mise run prefect-server` | Start Prefect server |
-| `prefect-worker` | `mise run prefect-worker` | Start Prefect worker |
-| `deploy-flows` | `mise run deploy-flows` | Deploy Prefect flows |
+| `dev` | `mise run dev` | Start FastAPI (migrations run on startup) |
+| `test` | `mise run test` | Run the full test suite |
+| `lint` | `mise run lint` | Lint with Ruff |
+| `fmt` | `mise run fmt` | Format with Ruff |
+| `typecheck` | `mise run typecheck` | Type-check with ty |
+| `migrate` | `mise run migrate` | Run Alembic migrations manually |
+| `deploy-flows` | `mise run deploy-flows` | Re-deploy Prefect flows |
 
----
+## Tailwind CSS
+
+Tailwind CSS v4 is compiled from `hazlo/static/css/input.css`:
+
+```bash
+npm install                              # install Tailwind CLI
+mise run tailwind-build                  # compile to output.css (one-shot)
+mise run tailwind-watch                  # watch mode for development
+```
+
+The compiled `output.css` is gitignored — it's a build artifact regenerated on deploy.
 
 ## Testing
 
-Run the test suite:
-
 ```bash
-mise run test
+mise run test           # full suite
+mise run test -- -k "test_event"   # specific test
+mise run test -- --cov  # with coverage
 ```
 
-Recommended practices:
+Test structure mirrors the architecture:
 
-- **Domain tests**: use case coverage for event creation, review, and ingestion;
-  business rules (e.g. date validation, required ticket link for paid events).
-- **Infrastructure tests**: repositories against PostgreSQL via Testcontainers;
-  source adapters with mocked external responses.
-- **Integration tests**: full ingestion → review → publishing flows.
+| Directory | Scope |
+|-----------|-------|
+| `tests/domain/` | Business rules: event transitions, circuit breaker, validations |
+| `tests/application/` | Use cases: ingestion, review, flow wiring |
+| `tests/infrastructure/` | Adapters, LLM providers, crypto, repositories |
+| `tests/api/` | HTTP endpoints (admin sources, events, LLM providers) |
 
----
+### Testing conventions
+
+- **Domain tests** — pure business logic, no I/O, no frameworks
+- **Infrastructure tests** — PostgreSQL via Testcontainers; mocked external responses
+- **Integration tests** — full ingestion → review → publishing flows
+- **Pytest config** — `asyncio_mode = "auto"` in `pyproject.toml`
+
+## Project Structure
+
+```
+hazlo/
+├── hazlo/                          # Application source
+│   ├── domain/                     # Domain layer (pure business logic)
+│   │   ├── event.py                # Event entity + value objects
+│   │   ├── source.py               # Source entity
+│   │   ├── review.py               # Review + audit trail
+│   │   ├── circuit_breaker.py      # LLM fault tolerance
+│   │   └── llm_provider.py         # LLM provider entity
+│   ├── application/                # Application layer (use cases + services)
+│   │   ├── use_cases/
+│   │   │   ├── ingest_source.py
+│   │   │   ├── review_event.py
+│   │   │   └── create_event_from_source.py
+│   │   └── services/
+│   │       ├── enrichment_service.py
+│   │       ├── quality_classifier.py
+│   │       ├── review_engine.py
+│   │       └── dedup_service.py
+│   ├── infrastructure/             # Infrastructure layer
+│   │   ├── adapters/               # Source connectors
+│   │   │   ├── base.py
+│   │   │   ├── rss_adapter.py
+│   │   │   ├── web_adapter.py
+│   │   │   └── email_adapter.py
+│   │   ├── api/                    # FastAPI routes + deps
+│   │   │   └── routes/
+│   │   │       ├── admin_sources.py
+│   │   │       ├── admin_events.py
+│   │   │       └── admin_llm_providers.py
+│   │   ├── db/                     # SQLAlchemy models + repositories
+│   │   ├── llm/                    # LLM client + providers
+│   │   │   ├── client.py
+│   │   │   └── providers/
+│   │   │       ├── base.py
+│   │   │       ├── gemini.py
+│   │   │       └── openrouter.py
+│   │   ├── prefect/                # Scheduled flows + deployments
+│   │   │   ├── flows.py
+│   │   │   └── deployments.py
+│   │   └── templates/              # Jinja2 + HTMX templates
+│   ├── static/                     # Tailwind CSS (input.css)
+│   └── main.py                     # FastAPI app entry point
+├── tests/                          # Test suite
+│   ├── domain/
+│   ├── application/
+│   ├── infrastructure/
+│   │   └── llm/
+│   └── api/
+├── alembic/                        # Database migrations
+├── docker/                         # Docker entrypoint scripts
+├── docker-compose.yml              # Full stack orchestration
+├── pyproject.toml                  # Project metadata + dependencies
+└── mise.toml                       # Task runner config
+```
 
 ## Roadmap
 
-Some possible directions for hazlo:
-
-- [ ] Advanced agenda filtering by neighborhood, event type, price range, and
-      family-friendliness.
-- [ ] Notifications (email / push) when relevant new events are added.
-- [ ] Role system (source admin, event reviewer, read-only).
-- [ ] Public API to expose events to third parties.
-- [ ] Metrics and reports on event volume and quality per source.
-
----
+- [ ] Advanced agenda filtering (neighborhood, type, price, family-friendliness)
+- [ ] Notifications (email/push) for relevant new events
+- [ ] Role-based access (source admin, event reviewer, read-only)
+- [ ] Public API to expose events to third parties
+- [ ] Metrics and quality reports per source
 
 ## Contributing
 
-Contributions are welcome. Guidelines:
+We welcome contributions! Please read the [Contributing Guide](CONTRIBUTING.md) for details on:
 
-- Open an issue clearly describing the improvement or bug.
-- Add tests covering the new functionality or the fixed issue.
-- Respect the layered architecture (Domain / Application / Infrastructure).
-- Follow the project's style guides (formatting, strict typing, etc.).
+- Opening issues and feature requests
+- Code style and architecture conventions
+- Testing requirements
+- Pull request process
 
----
+## Troubleshooting
+
+### Docker build fails: "README.md not found"
+
+hatchling requires `README.md` in the build context. Ensure `.dockerignore` has `!README.md` to un-exclude it.
+
+### Prefect flows not found by worker
+
+Deployments may have stale entrypoints. Re-run `docker compose up -d` to trigger `prefect_init.py`, which deletes old deployments and re-creates them with correct module-path entrypoints.
+
+### Database connection errors in Docker
+
+If `DATABASE_URL` is set in your host `.env`, Docker Compose may pick it up instead of using the internal `postgres:5432` address. Use explicit `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` variables instead.
+
+### IntegrityError on event save
+
+Events use `session.merge()` for upsert behavior. If you see `IntegrityError`, check that the repository method uses `merge()` (not `add()`) for entities that might be re-saved.
+
+### LLM classification slow or failing
+
+- 1000+ events with LLM calls = ~30 minutes. Consider batch processing.
+- Gemini sometimes returns non-JSON. The classifier handles this gracefully with defaults.
+- Check circuit breaker status at `/admin/llm-providers` — open circuits skip to fallback providers.
 
 ## License
 
-Hazlo is source-available software (not open source in the OSI sense), licensed
-under the **Hazlo Source-Available Ethical License 1.0 (HSEL-1.0)**.
+Hazlo is source-available software licensed under the
+**Hazlo Source-Available Ethical License 1.0 (HSEL-1.0)**.
 
-The code is visible for inspection, learning, private use, internal business
-use, and contribution.
-
-**License terms:**
-- **LICENSE**: HSEL-1.0 — permits personal, educational, research, and internal
-  business use. Prohibits offering as a commercial service without permission.
-- **ETHICAL-USE.md**: human-readable summary of the ethical restrictions —
-  prohibits use for military purposes, weapons, mass surveillance, repression,
-  and human rights violations. These restrictions are perpetual.
+- **[LICENSE](LICENSE)** — Full license text. Permits personal, educational, research, and internal business use. Prohibits offering as a commercial service without permission.
+- **[ETHICAL-USE.md](ETHICAL-USE.md)** — Ethical use restrictions: prohibits use for military purposes, weapons, mass surveillance, repression, and human rights violations. These restrictions are perpetual.
 
 For questions about licensing or alternative arrangements, contact the licensor.
+
+---
+
+<p align="center">
+  Built with care for communities and their events.
+</p>

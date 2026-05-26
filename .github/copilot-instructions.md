@@ -3,6 +3,9 @@
 This file contains workspace-level instructions for GitHub Copilot.
 Apply these to all code generation, review, and assistance tasks in this repository.
 
+> **Full documentation**: [docs/](../docs/) — especially [docs/ai-context.md](../docs/ai-context.md)
+> for a dense AI-oriented knowledge base.
+
 ---
 
 ## Project Overview
@@ -157,7 +160,34 @@ The following workspace skills are available in `.agents/skills/`:
 
 ---
 
+## Versioning
+
+- **Timestamp format**: `YYYYMMDDHHMM` — no semver (`v1.2.3`).
+- **Dev**: `__version__ = "0.0.0"` in `hazlo/__init__.py`. Don't modify during development.
+- **Release**: automatic on merge to `main`. CI bumps, commits, tags, and creates GitHub Release.
+- **Branching**: `dev` for daily work, `main` for releases. All PRs target `dev`.
+- **Check**: `mise run version`.
+
 ## License
 
 hazlo is source-available software licensed under the **Hazlo Source-Available Ethical License 1.0 (HSEL-1.0)**.
 It is not open source in the OSI sense. See `LICENSE` and `ETHICAL-USE.md` for details.
+
+---
+
+## Documentation (MANDATORY)
+
+Documentation is not optional. This is an open-source project — docs are the first impression.
+
+**Rule: every code change that affects behavior MUST update documentation.**
+
+Before finishing any task, verify:
+
+| If you changed... | Update this file |
+|---|---|
+| Entities, routes, conventions, tooling, architecture | `docs/ai-context.md` |
+| Setup steps, tech stack, features visible to new users | `README.md` |
+| Added, changed, or removed a feature | `CHANGELOG.md` |
+| Dev workflow, conventions, versioning rules | `CONTRIBUTING.md` |
+
+When in doubt, update. Stale docs are worse than no docs.

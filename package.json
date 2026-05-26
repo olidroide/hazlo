@@ -1,0 +1,12 @@
+{
+  "name": "hazlo-admin",
+  "private": true,
+  "scripts": {
+    "tailwind:build": "npx @tailwindcss/cli -i ./hazlo/static/css/input.css -o ./hazlo/static/css/output.css --minify",
+    "tailwind:watch": "npx @tailwindcss/cli -i ./hazlo/static/css/input.css -o ./hazlo/static/css/output.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.0",
+    "tailwindcss": "^4.3.0"
+  }
+}

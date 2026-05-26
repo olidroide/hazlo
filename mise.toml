@@ -1,15 +1,29 @@
 [tools]
-python = "3.12"
+python = "3.13"
 uv = "latest"
 ruff = "latest"
 
 [tasks]
 dev = "uv run fastapi dev hazlo/main.py"
 test = "uv run pytest"
-lint = "uv run ruff check hazlo tests"
+lint = "uv run ruff check hazlo tests alembic/versions/"
 fmt = "uv run ruff format hazlo tests"
-typecheck = "uv run ty check hazlo"
+typecheck = "uv run ty check hazlo tests/"
 migrate = "uv run alembic upgrade head"
-prefect-server = "uv run prefect server start"
-prefect-worker = "uv run prefect worker start --pool default"
+prefect-server = "uv run prefect server start"  # local-only (skip if using docker compose)
+prefect-worker = "uv run prefect worker start --pool local-pool"  # local-only
 deploy-flows = "uv run python -m hazlo.infrastructure.prefect.deployments"
+setup-prefect = "bash scripts/setup-prefect.sh"  # one-command setup with docker compose"
+version = "uv run python -c \"from hazlo import __version__; print(__version__)\""
+release = "bash scripts/release.sh"
+tailwind-build = "npx tailwindcss -i ./hazlo/static/css/input.css -o ./hazlo/static/css/output.css --minify"
+tailwind-watch = "npx tailwindcss -i ./hazlo/static/css/input.css -o ./hazlo/static/css/output.css --watch"
+
+[tasks.ci]
+description = "Run full CI pipeline"
+run = [
+    "mise run fmt",
+    "mise run lint",
+    "mise run typecheck",
+    "mise run test -- tests/domain/ tests/application/ tests/infrastructure/test_rss_adapter.py -v",
+]

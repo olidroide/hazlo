@@ -4,10 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Hazlo Admin{% endblock %}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="{{ static_url('css/output.css') }}" onerror="this.remove(); window.__tailwind_cdn=true;">
+    <script>if(window.__tailwind_cdn){document.write('<script src="https://cdn.tailwindcss.com"><\/script>');}</script>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script>
-        tailwind.config = {
+        if (typeof tailwind !== 'undefined') tailwind.config = {
             darkMode: 'class',
             theme: {
                 extend: {
@@ -28,8 +29,13 @@
         }
     </script>
     {% block extra_head %}{% endblock %}
+    <style>
+        .btn-spinner { display: none; width: 1em; height: 1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
 </head>
 <body class="h-full bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
+      hx-boost="true"
       hx-on::after-request="if(event.detail.successful) { document.querySelectorAll('.flash').forEach(el => el.remove()); }">
 
     <!-- Nav -->
@@ -48,6 +54,10 @@
                         <a href="/admin/events?status=pending"
                            class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-neutral-500 hover:text-neutral-700 hover:border-neutral-300">
                             Eventos pendientes
+                        </a>
+                        <a href="/admin/llm-providers"
+                           class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-neutral-500 hover:text-neutral-700 hover:border-neutral-300">
+                            Proveedores LLM
                         </a>
                     </div>
                 </div>
@@ -79,21 +89,41 @@
     </div>
 
     <!-- Main content -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main id="main-content" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {% block content %}{% endblock %}
     </main>
 
     <script>
-        // Dark mode toggle
-        const toggle = document.getElementById('dark-mode-toggle');
-        if (localStorage.getItem('dark-mode') === 'true' ||
-            (!localStorage.getItem('dark-mode') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
+        if (!window.__hazloInited) {
+            window.__hazloInited = true;
+
+            const toggle = document.getElementById('dark-mode-toggle');
+            if (localStorage.getItem('dark-mode') === 'true' ||
+                (!localStorage.getItem('dark-mode') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            }
+            toggle.addEventListener('click', () => {
+                document.documentElement.classList.toggle('dark');
+                localStorage.setItem('dark-mode', document.documentElement.classList.contains('dark'));
+            });
+
+            document.body.addEventListener('htmx:beforeRequest', function(evt) {
+                var btn = evt.target.closest('button, a');
+                if (btn) {
+                    btn.classList.add('opacity-60', 'pointer-events-none');
+                    var spinner = btn.querySelector('.btn-spinner');
+                    if (spinner) spinner.style.display = 'inline-block';
+                }
+            });
+            document.body.addEventListener('htmx:afterRequest', function(evt) {
+                var btn = evt.target.closest('button, a');
+                if (btn) {
+                    btn.classList.remove('opacity-60', 'pointer-events-none');
+                    var spinner = btn.querySelector('.btn-spinner');
+                    if (spinner) spinner.style.display = 'none';
+                }
+            });
         }
-        toggle.addEventListener('click', () => {
-            document.documentElement.classList.toggle('dark');
-            localStorage.setItem('dark-mode', document.documentElement.classList.contains('dark'));
-        });
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>

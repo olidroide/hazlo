@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+@source "../../infrastructure/templates/**/*.html";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-teal-50: #f0fdfa;
+  --color-teal-100: #ccfbf1;
+  --color-teal-200: #99f6e4;
+  --color-teal-300: #5eead4;
+  --color-teal-400: #2dd4bf;
+  --color-teal-500: #14b8a6;
+  --color-teal-600: #0d9488;
+  --color-teal-700: #0f766e;
+}

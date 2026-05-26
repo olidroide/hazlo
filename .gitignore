@@ -5,8 +5,6 @@ __pycache__/
 
 # C extensions
 *.so
-*.csv
-*.json
 
 # Distribution / packaging
 .Python
@@ -27,11 +25,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-secrets/
 
 # PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
 
@@ -54,37 +49,33 @@ coverage.xml
 .pytest_cache/
 cover/
 
-# Django stuff:
+# Django stuff
 *.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
-
 # PyBuilder
 .pybuilder/
 target/
-
 
 # IPython
 profile_default/
 ipython_config.py
 
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
+# PEP 582
 __pypackages__/
 
-
 # Environments
-*.env
+.env
 .env.local
+.env.production
 .venv
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
-run/
 
 # Spyder project settings
 .spyderproject
@@ -107,12 +98,46 @@ dmypy.json
 # pytype static type analyzer
 .pytype/
 
+# Ruff
+.ruff_cache/
+
+# ty type checker
+.ty/
+
 # Cython debug symbols
 cython_debug/
 
-### macOS
-*.DS_Store
+# macOS
+.DS_Store
 .AppleDouble
 .LSOverride
-.Trashes.env
-logs*
+.Trashes
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Secrets
+secrets/
+
+# Logs
+logs/
+
+# uv
+uv.lock
+
+# Data files (local only)
+*.csv
+*.json
+!package.json
+!package-lock.json
+
+# Docker Compose local overrides
+docker-compose.override.yml
+
+# Node (Tailwind CSS)
+node_modules/
+hazlo/static/css/output.css
