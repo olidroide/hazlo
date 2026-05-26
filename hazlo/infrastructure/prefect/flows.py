@@ -8,6 +8,7 @@ from prefect.logging import get_run_logger
 from hazlo.application.services import DedupService, EnrichmentService
 from hazlo.application.use_cases.ingest_source import IngestSource
 from hazlo.domain.event import EventStatus
+from hazlo.infrastructure.llm.providers.base import LLMProvider
 
 
 @task(name="fetch-source", retries=2, retry_delay_seconds=30)
@@ -84,7 +85,7 @@ async def _build_llm_infrastructure(session):
     if not settings.hazlo_secret_key:
         return None, ReviewEngine(auto_approve_threshold=settings.auto_approve_threshold)
 
-    providers = []
+    providers: list[tuple[LLMProvider, str]] = []
     api_key = decrypt_value(active_provider.api_key_encrypted, settings.hazlo_secret_key)
 
     match active_provider.provider_type:
