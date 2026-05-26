@@ -239,10 +239,11 @@ def _parse_dates(start_date: str | None, end_date: str | None, schedule: str | N
 
     time_match = _TIME_PATTERN.search(schedule or "")
     if time_match:
-        hour = int(time_match.group(1).split(":")[0])
-        minute = int(time_match.group(1).split(":")[1])
-        day_offset = hour // 24
-        hour = hour % 24
+        raw_hour = int(time_match.group(1).split(":")[0])
+        raw_minute = int(time_match.group(1).split(":")[1])
+        day_offset = raw_hour // 24
+        hour = raw_hour % 24
+        minute = min(raw_minute, 59)
         if day_offset:
             date_obj = date_obj + timedelta(days=day_offset)
     else:

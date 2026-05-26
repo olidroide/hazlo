@@ -322,6 +322,12 @@ def test_parse_dates_single_day() -> None:
     assert end is None
 
 
+def test_parse_dates_rolls_over_and_clamps_invalid_time_components() -> None:
+    start, end = _parse_dates("12/06/2026", "12/06/2026", "30:75 h")
+    assert start == "2026-06-13T06:59:00+00:00"
+    assert end is None
+
+
 def test_parse_dates_multi_day() -> None:
     start, end = _parse_dates("24/10/2026", "25/10/2026", "11:00 h")
     assert start is not None

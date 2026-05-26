@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Prefect deployment entrypoints**: `from_source().deploy()` corrupted module-path entrypoints to file paths. Fixed by using `client.create_deployment()` directly with explicit `entrypoint` parameter.
 - **Docker DATABASE_URL**: `${DATABASE_URL:-...}` picked up host `.env` value. Changed to use shared `POSTGRES_*` variables for Docker-internal connections.
 - **Docker build**: hatchling requires `README.md` in build context. Added `!README.md` to `.dockerignore`.
+- **RSS date parsing**: ESMadrid schedules can use late-night times like `30:00 h`. The RSS adapter now rolls overflow hours into the next day and clamps invalid minutes instead of crashing ingestion.
 
 ### Added
 
