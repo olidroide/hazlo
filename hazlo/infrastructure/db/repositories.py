@@ -64,11 +64,84 @@ class EventRepository:
         )
         return {k for k in result.scalars().all() if k is not None}
 
+    async def exists_by_content_hash(self, content_hash: str | None) -> bool:
+        if content_hash is None:
+            return False
+        result = await self._session.execute(
+            select(EventModel.id).where(EventModel.content_hash == content_hash).limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def list_existing_content_hashes(self, hashes: set[str]) -> set[str]:
+        if not hashes:
+            return set()
+        result = await self._session.execute(
+            select(EventModel.content_hash).where(EventModel.content_hash.in_(hashes))
+        )
+        return {h for h in result.scalars().all() if h is not None}
+
     async def save(self, event: Event) -> Event:
-        model = await self._session.merge(event_to_model(event))
-        await self._session.commit()
-        await self._session.refresh(model)
-        return model_to_event(model)
+        dialect = self._session.bind.dialect.name
+
+        if dialect == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert
+
+            model = event_to_model(event)
+            stmt = insert(EventModel).values(
+                id=model.id,
+                title=model.title,
+                location=model.location,
+                start_at=model.start_at,
+                end_at=model.end_at,
+                price=model.price,
+                ticket_info=model.ticket_info,
+                is_children_activity=model.is_children_activity,
+                is_toddler_friendly=model.is_toddler_friendly,
+                confidence_score=model.confidence_score,
+                agent_review=model.agent_review,
+                source_url=model.source_url,
+                extracted_at=model.extracted_at,
+                status=model.status,
+                source_id=model.source_id,
+                idempotency_key=model.idempotency_key,
+                content_hash=model.content_hash,
+                created_at=model.created_at,
+                updated_at=model.updated_at,
+            )
+
+            # Upsert: if source_url exists, update the event
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["source_url"],
+                set_={
+                    "title": stmt.excluded.title,
+                    "location": stmt.excluded.location,
+                    "start_at": stmt.excluded.start_at,
+                    "end_at": stmt.excluded.end_at,
+                    "price": stmt.excluded.price,
+                    "ticket_info": stmt.excluded.ticket_info,
+                    "is_children_activity": stmt.excluded.is_children_activity,
+                    "is_toddler_friendly": stmt.excluded.is_toddler_friendly,
+                    "confidence_score": stmt.excluded.confidence_score,
+                    "agent_review": stmt.excluded.agent_review,
+                    "extracted_at": stmt.excluded.extracted_at,
+                    "status": stmt.excluded.status,
+                    "source_id": stmt.excluded.source_id,
+                    "idempotency_key": stmt.excluded.idempotency_key,
+                    "content_hash": stmt.excluded.content_hash,
+                    "updated_at": stmt.excluded.updated_at,
+                },
+            ).returning(EventModel)
+
+            result = await self._session.execute(stmt)
+            saved_model = result.scalar_one()
+            await self._session.commit()
+            return model_to_event(saved_model)
+        else:
+            # Fallback for SQLite (tests)
+            model = await self._session.merge(event_to_model(event))
+            await self._session.commit()
+            await self._session.refresh(model)
+            return model_to_event(model)
 
     async def update_status(self, event_id: uuid.UUID, status: EventStatus) -> Event | None:
         from hazlo.infrastructure.db.models import _utcnow

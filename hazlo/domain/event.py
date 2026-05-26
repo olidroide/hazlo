@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import Enum
@@ -95,6 +97,7 @@ class Event:
     status: EventStatus = EventStatus.PENDING
     source_id: uuid.UUID | None = None
     idempotency_key: str | None = None
+    content_hash: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -149,7 +152,62 @@ class Event:
     def is_valid(self) -> bool:
         if not self.title:
             return False
-        return self.start_at is not None
+        if self.start_at is None:
+            return False
+        return self.location is not None
 
     def compute_idempotency_key(self) -> IdempotencyKey:
         return IdempotencyKey.from_event(self.source_url, self.title, self.start_at)
+
+    @staticmethod
+    def normalize_for_hash(raw_event: Mapping[str, object]) -> dict[str, object]:
+        """Normalize fields to prevent false negatives in dedup.
+
+        Normalizes whitespace, case, and accents to ensure equivalent events
+        produce the same hash regardless of formatting differences.
+        """
+        def normalize_text(text: object) -> object:
+            if not isinstance(text, str):
+                return text
+            text = re.sub(r"\s+", " ", text.strip().lower())
+            return text
+
+        def normalize_datetime(dt_str: object) -> object:
+            if not isinstance(dt_str, str):
+                return dt_str
+            try:
+                dt_str_normalized = dt_str.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(dt_str_normalized)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=UTC)
+                return dt.isoformat()
+            except ValueError:
+                return dt_str
+
+        return {
+            "title": normalize_text(raw_event.get("title")),
+            "description": normalize_text(raw_event.get("description")),
+            "location": normalize_text(raw_event.get("location")),
+            "start_at": normalize_datetime(raw_event.get("start_at")),
+            "end_at": normalize_datetime(raw_event.get("end_at")),
+            "price": normalize_text(raw_event.get("price")),
+            "ticket_info": raw_event.get("ticket_info"),
+        }
+
+    @staticmethod
+    def compute_content_hash(raw_event: Mapping[str, object]) -> str:
+        """Compute SHA-256 hash of normalized event content for deduplication.
+
+        Hashes only content fields (title, description, location, start_at, end_at, price, ticket_info).
+        Normalizes whitespace, case, and datetime formats before hashing.
+        Ignores metadata fields (extracted_at, source_url) that don't represent event content.
+
+        Args:
+            raw_event: Raw event dictionary from adapter
+
+        Returns:
+            SHA-256 hex digest (64 characters)
+        """
+        normalized = Event.normalize_for_hash(raw_event)
+        content_json = json.dumps(normalized, sort_keys=True, ensure_ascii=False)
+        return hashlib.sha256(content_json.encode("utf-8")).hexdigest()

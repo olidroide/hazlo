@@ -35,11 +35,12 @@ class EventModel(Base):
     is_toddler_friendly: Mapped[bool] = mapped_column(Boolean, default=False)
     confidence_score: Mapped[float | None] = mapped_column(nullable=True)
     agent_review: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
-    source_url: Mapped[str] = mapped_column(String(1000), nullable=False)
+    source_url: Mapped[str] = mapped_column(String(1000), unique=True, nullable=False)
     extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
     source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sources.id"), nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
@@ -192,6 +193,7 @@ def event_to_model(event: Event) -> EventModel:
         status=event.status.value,
         source_id=event.source_id,
         idempotency_key=event.idempotency_key,
+        content_hash=event.content_hash,
         created_at=event.created_at,
         updated_at=event.updated_at,
     )
@@ -215,6 +217,7 @@ def model_to_event(model: EventModel) -> Event:
         status=EventStatus(model.status),
         source_id=model.source_id,
         idempotency_key=model.idempotency_key,
+        content_hash=model.content_hash,
         created_at=model.created_at,
         updated_at=model.updated_at,
     )

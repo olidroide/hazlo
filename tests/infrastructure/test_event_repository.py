@@ -36,8 +36,9 @@ async def db_session(postgres_container: PostgresContainer) -> AsyncGenerator[As
 
 
 def _make_event() -> Event:
+    event_id = uuid.uuid4()
     return Event(
-        id=uuid.uuid4(),
+        id=event_id,
         title="Concierto Jazz",
         location=Location(address="Calle Mayor 1", neighborhood="Centro", metro="Sol"),
         start_at=datetime(2026, 6, 1, 20, 0, tzinfo=UTC),
@@ -46,7 +47,7 @@ def _make_event() -> Event:
         ticket_info=TicketInfo(url="https://tickets.example.com", notes=None),
         is_children_activity=False,
         is_toddler_friendly=False,
-        source_url="https://source.example.com/event",
+        source_url=f"https://source.example.com/event/{event_id}",
         extracted_at=datetime(2026, 5, 16, 10, 0, tzinfo=UTC),
         status=EventStatus.PENDING,
     )

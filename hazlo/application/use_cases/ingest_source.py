@@ -84,12 +84,17 @@ class IngestSource:
         result.events_found = len(raw_events)
         await self._emit("fetch_done", "success", msg=f"{len(raw_events)} events found in feed")
 
-        idempotency_keys = await self._load_existing_idempotency_keys(raw_events, adapter)
+        content_hashes = await self._load_existing_content_hashes(raw_events)
 
         normalize_ok = 0
         normalize_fail = 0
 
         for raw in raw_events:
+            content_hash = Event.compute_content_hash(raw)
+            if content_hash in content_hashes:
+                result.events_skipped += 1
+                continue
+
             try:
                 event = await adapter.normalize(raw)
             except Exception as exc:
@@ -104,26 +109,13 @@ class IngestSource:
                 continue
 
             idempotency_key = event.compute_idempotency_key().value
-            if idempotency_key in idempotency_keys:
-                result.events_skipped += 1
-                continue
 
             if event.source_url in existing_urls:
                 result.events_skipped += 1
                 continue
 
             normalize_ok += 1
-            event = replace(event, source_id=source.id, idempotency_key=idempotency_key)
-
-            if not event.is_valid():
-                await self._emit(
-                    "normalize",
-                    "error",
-                    msg=f"Invalid event (missing title/start_at): {event.title or 'unknown'}",
-                )
-                result.errors.append(f"Event invalid (missing title/start_at): {event.title or 'unknown'}")
-                result.events_auto_rejected += 1
-                continue
+            event = replace(event, source_id=source.id, idempotency_key=idempotency_key, content_hash=content_hash)
 
             await self._emit(
                 "normalize",
@@ -151,6 +143,16 @@ class IngestSource:
                         "error",
                         msg=f"{event.title} → LLM error: {exc}",
                     )
+
+            if not event.is_valid():
+                await self._emit(
+                    "normalize",
+                    "error",
+                    msg=f"Invalid event (missing title/start_at/location): {event.title or 'unknown'}",
+                )
+                result.errors.append(f"Event invalid (missing title/start_at/location): {event.title or 'unknown'}")
+                result.events_auto_rejected += 1
+                continue
 
             if self._dedup.execute(event, existing_urls):
                 result.events_skipped += 1
@@ -206,7 +208,6 @@ class IngestSource:
 
             result.events_to_save.append(event)
             existing_urls.add(event.source_url)
-            idempotency_keys.add(idempotency_key)
 
         result.events_new = len(result.events_to_save)
         result.finished_at = datetime.now(UTC)
@@ -261,6 +262,26 @@ class IngestSource:
             return set()
 
         return await repo.list_existing_idempotency_keys(keys_to_check)
+
+    async def _load_existing_content_hashes(self, raw_events: list[dict]) -> set[str]:
+        if self._event_repo is None:
+            return set()
+
+        repo: Any = self._event_repo
+
+        hashes_to_check: set[str] = set()
+        for raw in raw_events:
+            try:
+                content_hash = Event.compute_content_hash(raw)
+                hashes_to_check.add(content_hash)
+            except Exception:
+                logger.warning("Failed to compute content hash for raw event", exc_info=True)
+                continue
+
+        if not hashes_to_check:
+            return set()
+
+        return await repo.list_existing_content_hashes(hashes_to_check)
 
     def _apply_enrichment(self, event: Event) -> Event:
         enriched = self._enrichment.execute(event.to_dict())
