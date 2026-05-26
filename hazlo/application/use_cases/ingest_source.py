@@ -5,18 +5,25 @@ import logging
 import uuid
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from hazlo.application.services import (
     DedupService,
     EnrichmentService,
-    QualityClassifier,
     ReviewEngine,
 )
-from hazlo.application.services.llm_enrichment_service import LLMEnrichmentService
 from hazlo.domain.event import Event, EventStatus
+from hazlo.domain.llm_output import ClassificationResult
 from hazlo.domain.source import Source
 from hazlo.infrastructure.adapters.base import BaseSourceAdapter
+
+
+class QualityClassifierProtocol(Protocol):
+    async def execute(self, event: Event) -> ClassificationResult: ...
+
+
+class LocationEnrichmentProtocol(Protocol):
+    async def enrich_location(self, event: Event) -> Event: ...
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +49,9 @@ class IngestSource:
         adapter_registry: dict[str, BaseSourceAdapter],
         enrichment_service: EnrichmentService,
         dedup_service: DedupService,
-        quality_classifier: QualityClassifier | None = None,
+        quality_classifier: QualityClassifierProtocol | None = None,
         review_engine: ReviewEngine | None = None,
-        llm_enrichment_service: LLMEnrichmentService | None = None,
+        llm_enrichment_service: LocationEnrichmentProtocol | None = None,
         event_repo: object | None = None,
         event_queue: asyncio.Queue[dict[str, object]] | None = None,
     ) -> None:

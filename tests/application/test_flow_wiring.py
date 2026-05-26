@@ -4,60 +4,49 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
+from pydantic_ai import ModelResponse
+from pydantic_ai.messages import ToolCallPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from hazlo.application.services import DedupService, EnrichmentService, QualityClassifier, ReviewEngine
-from hazlo.application.services.quality_classifier import ClassificationResult
+from hazlo.application.services import DedupService, EnrichmentService, ReviewEngine
 from hazlo.application.use_cases.ingest_source import IngestSource
 from hazlo.domain.event import Event, EventStatus, Location, Price, TicketInfo
+from hazlo.domain.llm_output import ClassificationResult
 from hazlo.domain.source import Source, SourceType
 from hazlo.infrastructure.adapters.base import BaseSourceAdapter
-from hazlo.infrastructure.llm import LLMClient
-from hazlo.infrastructure.llm.providers.base import LLMProvider, LLMResponse
+from hazlo.infrastructure.llm.agents import QualityClassifierAgent
 
 # ---------------------------------------------------------------------------
-# Mock LLM provider
+# Mock LLM model using FunctionModel
 # ---------------------------------------------------------------------------
 
 
-class MockLLMProvider(LLMProvider):
-    def __init__(
-        self,
-        response_content: str = '{"is_children_activity": true, "is_toddler_friendly": true, "confidence": 0.95}',
-        fail: bool = False,
-    ) -> None:
-        self._response_content = response_content
-        self._fail = fail
-        self.call_count = 0
-        self.last_system_prompt: str | None = None
-        self.last_user_content: str | None = None
+def create_mock_model(
+    is_children_activity: bool = True,
+    is_toddler_friendly: bool = True,
+    confidence: float = 0.95,
+    fail: bool = False,
+) -> FunctionModel:
+    """Create a FunctionModel that returns structured classification output."""
 
-    async def generate(
-        self,
-        system_prompt: str,
-        user_content: str,
-        temperature: float = 0.0,
-        max_tokens: int = 500,
-    ) -> LLMResponse:
-        self.call_count += 1
-        self.last_system_prompt = system_prompt
-        self.last_user_content = user_content
-        if self._fail:
-            msg = "Mock provider failure"
-            raise ConnectionError(msg)
-        return LLMResponse(
-            content=self._response_content,
-            tokens_in=50,
-            tokens_out=30,
-            model="mock-model",
-            latency_ms=10,
+    def mock_generate(messages: list, info: AgentInfo) -> ModelResponse:
+        if fail:
+            raise ConnectionError("Mock model failure")
+
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="final_result",
+                    args={
+                        "is_children_activity": is_children_activity,
+                        "is_toddler_friendly": is_toddler_friendly,
+                        "confidence": confidence,
+                    },
+                )
+            ]
         )
 
-    async def test_connection(self) -> bool:
-        return not self._fail
-
-    @classmethod
-    async def list_models(cls, api_key: str) -> list:
-        return []
+    return FunctionModel(mock_generate)
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +95,7 @@ def _make_raw_event(url: str = "https://example.com/1") -> dict:
 
 def _make_use_case(
     adapter: BaseSourceAdapter,
-    classifier: QualityClassifier | None = None,
+    classifier: QualityClassifierAgent | None = None,
     review_engine: ReviewEngine | None = None,
 ) -> IngestSource:
     return IngestSource(
@@ -119,15 +108,14 @@ def _make_use_case(
 
 
 # ---------------------------------------------------------------------------
-# QualityClassifier — mock LLMClient
+# QualityClassifierAgent — mock FunctionModel
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_classifier_wires_and_returns_result() -> None:
-    provider = MockLLMProvider()
-    client = LLMClient([(provider, "mock")])
-    classifier = QualityClassifier(client)
+    model = create_mock_model(is_children_activity=True, is_toddler_friendly=True, confidence=0.95)
+    classifier = QualityClassifierAgent(model)
 
     event = Event(
         title="Taller infantil de pintura",
@@ -144,37 +132,12 @@ async def test_classifier_wires_and_returns_result() -> None:
     assert result.is_children_activity is True
     assert result.is_toddler_friendly is True
     assert result.confidence == 0.95
-    assert provider.call_count == 1
 
 
 @pytest.mark.asyncio
-async def test_classifier_sends_correct_prompt() -> None:
-    provider = MockLLMProvider()
-    client = LLMClient([(provider, "mock")])
-    classifier = QualityClassifier(client)
-
-    from hazlo.infrastructure.llm.prompts import QUALITY_CLASSIFIER_V1
-
-    event = Event(
-        title="Concierto rock",
-        location=Location(address="Sala Rock", neighborhood="Malasaña"),
-        start_at=datetime(2026, 7, 15, 21, 0, tzinfo=UTC),
-        price=Price(amount_cents=2500, is_free=False),
-        source_url="https://example.com/2",
-    )
-
-    await classifier.execute(event)
-
-    assert provider.last_system_prompt == QUALITY_CLASSIFIER_V1
-    assert "Concierto rock" in (provider.last_user_content or "")
-    assert "Sala Rock" in (provider.last_user_content or "")
-
-
-@pytest.mark.asyncio
-async def test_classifier_handles_invalid_json() -> None:
-    provider = MockLLMProvider(response_content="not json at all")
-    client = LLMClient([(provider, "mock")])
-    classifier = QualityClassifier(client)
+async def test_classifier_handles_low_confidence() -> None:
+    model = create_mock_model(is_children_activity=False, is_toddler_friendly=False, confidence=0.30)
+    classifier = QualityClassifierAgent(model)
 
     event = Event(title="Test", source_url="https://example.com/1")
 
@@ -182,86 +145,7 @@ async def test_classifier_handles_invalid_json() -> None:
 
     assert result.is_children_activity is False
     assert result.is_toddler_friendly is False
-    assert result.confidence == 0.0
-    assert result.raw_response == "not json at all"
-
-
-@pytest.mark.asyncio
-async def test_classifier_handles_partial_json() -> None:
-    provider = MockLLMProvider(response_content='{"is_children_activity": true}')
-    client = LLMClient([(provider, "mock")])
-    classifier = QualityClassifier(client)
-
-    event = Event(title="Test", source_url="https://example.com/1")
-
-    result = await classifier.execute(event)
-
-    assert result.is_children_activity is True
-    assert result.is_toddler_friendly is False
-    assert result.confidence == 0.5
-
-
-# ---------------------------------------------------------------------------
-# LLMClient — provider routing and fallback
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_llm_client_uses_first_provider() -> None:
-    primary = MockLLMProvider(
-        response_content='{"is_children_activity": true, "is_toddler_friendly": false, "confidence": 0.8}',
-    )
-    secondary = MockLLMProvider(
-        response_content='{"is_children_activity": false, "is_toddler_friendly": true, "confidence": 0.9}',
-    )
-    client = LLMClient([(primary, "primary"), (secondary, "secondary")])
-
-    response = await client.generate(system_prompt="sys", user_content="user", action="classify")
-
-    assert response.content == '{"is_children_activity": true, "is_toddler_friendly": false, "confidence": 0.8}'
-    assert primary.call_count == 1
-    assert secondary.call_count == 0
-
-
-@pytest.mark.asyncio
-async def test_llm_client_falls_back_on_failure() -> None:
-    primary = MockLLMProvider(fail=True)
-    secondary = MockLLMProvider(
-        response_content='{"is_children_activity": false, "is_toddler_friendly": true, "confidence": 0.7}',
-    )
-    client = LLMClient([(primary, "primary"), (secondary, "secondary")])
-
-    response = await client.generate(system_prompt="sys", user_content="user", action="classify")
-
-    assert "is_toddler_friendly" in response.content
-    assert primary.call_count == 1
-    assert secondary.call_count == 1
-
-
-@pytest.mark.asyncio
-async def test_llm_client_tracks_call_history() -> None:
-    provider = MockLLMProvider()
-    client = LLMClient([(provider, "mock")])
-
-    await client.generate(system_prompt="sys", user_content="user1", action="classify")
-    await client.generate(system_prompt="sys", user_content="user2", action="classify")
-
-    assert len(client.call_history) == 2
-    assert client.call_history[0].provider == "mock"
-    assert client.call_history[0].action == "classify"
-    assert client.call_history[0].tokens_in == 50
-
-
-@pytest.mark.asyncio
-async def test_llm_client_all_providers_fail() -> None:
-    provider = MockLLMProvider(fail=True)
-    client = LLMClient([(provider, "mock")])
-
-    with pytest.raises(RuntimeError, match="All LLM providers failed"):
-        await client.generate(system_prompt="sys", user_content="user", action="classify")
-
-    assert len(client.call_history) == 1
-    assert client.call_history[0].error is not None
+    assert result.confidence == 0.30
 
 
 # ---------------------------------------------------------------------------
@@ -271,11 +155,8 @@ async def test_llm_client_all_providers_fail() -> None:
 
 @pytest.mark.asyncio
 async def test_flow_with_classifier_and_review_auto_approves_high_confidence() -> None:
-    provider = MockLLMProvider(
-        response_content='{"is_children_activity": true, "is_toddler_friendly": true, "confidence": 0.96}'
-    )
-    client = LLMClient([(provider, "mock")])
-    classifier = QualityClassifier(client)
+    model = create_mock_model(is_children_activity=True, is_toddler_friendly=True, confidence=0.96)
+    classifier = QualityClassifierAgent(model)
     review_engine = ReviewEngine(auto_approve_threshold=0.95)
 
     adapter = FakeAdapter(raw_events=[_make_raw_event()])
@@ -299,11 +180,8 @@ async def test_flow_with_classifier_and_review_auto_approves_high_confidence() -
 
 @pytest.mark.asyncio
 async def test_flow_with_classifier_flags_low_confidence() -> None:
-    provider = MockLLMProvider(
-        response_content='{"is_children_activity": false, "is_toddler_friendly": false, "confidence": 0.50}'
-    )
-    client = LLMClient([(provider, "mock")])
-    classifier = QualityClassifier(client)
+    model = create_mock_model(is_children_activity=False, is_toddler_friendly=False, confidence=0.50)
+    classifier = QualityClassifierAgent(model)
     review_engine = ReviewEngine(auto_approve_threshold=0.95)
 
     adapter = FakeAdapter(raw_events=[_make_raw_event()])
@@ -358,9 +236,22 @@ async def test_flow_with_review_engine_only_no_classifier() -> None:
 
 @pytest.mark.asyncio
 async def test_flow_classifier_invokes_llm_once_per_event() -> None:
-    provider = MockLLMProvider()
-    client = LLMClient([(provider, "mock")])
-    classifier = QualityClassifier(client)
+    call_count = 0
+
+    def counting_generate(messages: list, info: AgentInfo) -> ModelResponse:
+        nonlocal call_count
+        call_count += 1
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="final_result",
+                    args={"is_children_activity": True, "is_toddler_friendly": True, "confidence": 0.95},
+                )
+            ]
+        )
+
+    model = FunctionModel(counting_generate)
+    classifier = QualityClassifierAgent(model)
     review_engine = ReviewEngine(auto_approve_threshold=0.95)
 
     events = [_make_raw_event(f"https://example.com/{i}") for i in range(3)]
@@ -369,15 +260,14 @@ async def test_flow_classifier_invokes_llm_once_per_event() -> None:
 
     await use_case.execute(source=_make_source(), existing_urls=set())
 
-    assert provider.call_count == 3
+    assert call_count == 3
 
 
 @pytest.mark.asyncio
 async def test_flow_with_classifier_and_failing_llm() -> None:
-    """LLM provider fails → classifier error caught → event still processed without classification."""
-    provider = MockLLMProvider(fail=True)
-    client = LLMClient([(provider, "mock")])
-    classifier = QualityClassifier(client)
+    """LLM model fails → classifier returns fallback → event processed with confidence=0.0."""
+    model = create_mock_model(fail=True)
+    classifier = QualityClassifierAgent(model, retries=1)
     review_engine = ReviewEngine(auto_approve_threshold=0.95)
 
     adapter = FakeAdapter(raw_events=[_make_raw_event()])
@@ -386,8 +276,7 @@ async def test_flow_with_classifier_and_failing_llm() -> None:
     result = await use_case.execute(source=_make_source(), existing_urls=set())
 
     assert result.events_new == 1
-    assert any("LLM classification failed" in e for e in result.errors)
     saved_event = result.events_to_save[0]
-    assert saved_event.confidence_score is None
-    assert saved_event.agent_review is not None
-    assert "llm_error" in saved_event.agent_review
+    assert saved_event.confidence_score == 0.0
+    assert saved_event.is_children_activity is False
+    assert saved_event.is_toddler_friendly is False

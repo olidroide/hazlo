@@ -2,19 +2,98 @@ from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from pydantic_ai import Agent
+from pydantic_ai.models.google import GoogleModel
+from pydantic_ai.models.openrouter import OpenRouterModel
+from pydantic_ai.providers.google import GoogleProvider
+from pydantic_ai.providers.openrouter import OpenRouterProvider
 from starlette.responses import Response
 
 from hazlo.infrastructure.api.deps import get_llm_provider_repo
 from hazlo.infrastructure.crypto import decrypt_value, encrypt_value
 from hazlo.infrastructure.db.repositories import LLMProviderRepository
-from hazlo.infrastructure.llm.providers import _PROVIDER_CLASSES
 from hazlo.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+SUPPORTED_PROVIDERS = {"gemini", "openrouter"}
+
+
+@dataclass
+class ModelInfo:
+    id: str
+    display_name: str
+    is_free: bool
+    description: str | None = None
+
+
+async def _list_gemini_models(api_key: str) -> list[ModelInfo]:
+    provider = GoogleProvider(api_key=api_key)
+    response = provider.client.models.list()
+    models = []
+    for m in response:
+        if not m.name:
+            continue
+        model_id = m.name.removeprefix("models/")
+        display_name = m.display_name or model_id
+        is_free = "flash" in model_id.lower()
+        description = m.description[:200] if m.description else None
+        models.append(ModelInfo(id=model_id, display_name=display_name, is_free=is_free, description=description))
+    models.sort(key=lambda m: (not m.is_free, m.display_name))
+    return models
+
+
+async def _list_openrouter_models(api_key: str) -> list[ModelInfo]:
+    import httpx
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            "https://openrouter.ai/api/v1/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    models = []
+    for m in data.get("data", []):
+        model_id = m.get("id", "")
+        display_name = m.get("name", model_id)
+        pricing = m.get("pricing", {})
+        prompt_price = float(pricing.get("prompt", "0") or "0")
+        is_free = prompt_price == 0.0
+        description = m.get("description", "")[:200] if m.get("description") else None
+        models.append(ModelInfo(id=model_id, display_name=display_name, is_free=is_free, description=description))
+    models.sort(key=lambda m: (not m.is_free, m.display_name))
+    return models
+
+
+async def _list_models(provider_type: str, api_key: str) -> list[ModelInfo]:
+    if provider_type == "gemini":
+        return await _list_gemini_models(api_key)
+    if provider_type == "openrouter":
+        return await _list_openrouter_models(api_key)
+    raise ValueError(f"Unknown provider type: {provider_type}")
+
+
+async def _test_connection(provider_type: str, api_key: str, model_name: str) -> bool:
+    if provider_type == "gemini":
+        provider = GoogleProvider(api_key=api_key)
+        model = GoogleModel(model_name, provider=provider)
+    elif provider_type == "openrouter":
+        provider = OpenRouterProvider(api_key=api_key)
+        model = OpenRouterModel(model_name, provider=provider)
+    else:
+        raise ValueError(f"Unknown provider type: {provider_type}")
+
+    agent = Agent(model)
+    result = await agent.run("Reply with exactly: OK")
+    return "OK" in str(result.output)
 
 
 def _provider_dict(model) -> dict:
@@ -60,12 +139,11 @@ async def list_provider_models(
     provider_type: str = Form(...),
     api_key: str = Form(...),
 ):
-    provider_cls = _PROVIDER_CLASSES.get(provider_type)
-    if provider_cls is None:
+    if provider_type not in SUPPORTED_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unknown provider type: {provider_type}")
 
     try:
-        models = await provider_cls.list_models(api_key)
+        models = await _list_models(provider_type, api_key)
     except Exception:
         logger.exception("Failed to list models for provider=%s", provider_type)
         return request.state.templates.TemplateResponse(
@@ -103,13 +181,14 @@ async def create_provider(
     if not settings.hazlo_secret_key:
         raise HTTPException(status_code=500, detail="HAZLO_SECRET_KEY not configured")
 
-    if provider_type not in _PROVIDER_CLASSES:
+    if provider_type not in SUPPORTED_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unknown provider type: {provider_type}")
 
     from hazlo.infrastructure.db.models import LLMProviderModel
 
     encrypted_key = encrypt_value(api_key, settings.hazlo_secret_key)
     provider = LLMProviderModel(
+        id=uuid.uuid4(),
         name=name,
         provider_type=provider_type,
         model=model,
@@ -142,14 +221,8 @@ async def test_provider_connection(
 
     api_key = decrypt_value(model.api_key_encrypted, settings.hazlo_secret_key)
 
-    provider_cls = _PROVIDER_CLASSES.get(model.provider_type)
-    if provider_cls is None:
-        raise HTTPException(status_code=400, detail=f"Unknown provider type: {model.provider_type}")
-
-    provider = provider_cls(api_key=api_key, model=model.model)
-
     try:
-        success = await provider.test_connection()
+        success = await _test_connection(model.provider_type, api_key, model.model)
         logger.info("Test connection result for %s: success=%s", model.name, success)
     except Exception as exc:
         logger.exception("Provider test connection failed for %s", model.name)

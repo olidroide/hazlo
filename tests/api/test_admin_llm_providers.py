@@ -8,9 +8,9 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from hazlo.infrastructure.api import deps
+from hazlo.infrastructure.api.routes.admin_llm_providers import ModelInfo
 from hazlo.infrastructure.db.models import LLMProviderModel
 from hazlo.infrastructure.db.repositories import LLMProviderRepository
-from hazlo.infrastructure.llm.providers.base import ModelInfo
 from hazlo.main import app
 
 
@@ -244,10 +244,10 @@ def _sample_models() -> list[ModelInfo]:
 
 @pytest.mark.asyncio
 async def test_list_models_endpoint_gemini_returns_200() -> None:
-    async def _list_models(api_key: str) -> list[ModelInfo]:
+    async def _list_models(provider_type: str, api_key: str) -> list[ModelInfo]:
         return _sample_models()
 
-    with patch("hazlo.infrastructure.llm.providers.gemini.GeminiProvider.list_models", _list_models):
+    with patch("hazlo.infrastructure.api.routes.admin_llm_providers._list_models", _list_models):
         async with _client() as client:
             response = await client.post(
                 "/admin/llm-providers/models",
@@ -266,10 +266,10 @@ async def test_list_models_endpoint_gemini_returns_200() -> None:
 
 @pytest.mark.asyncio
 async def test_list_models_endpoint_shows_model_count() -> None:
-    async def _list_models(api_key: str) -> list[ModelInfo]:
+    async def _list_models(provider_type: str, api_key: str) -> list[ModelInfo]:
         return _sample_models()
 
-    with patch("hazlo.infrastructure.llm.providers.gemini.GeminiProvider.list_models", _list_models):
+    with patch("hazlo.infrastructure.api.routes.admin_llm_providers._list_models", _list_models):
         async with _client() as client:
             response = await client.post(
                 "/admin/llm-providers/models",
@@ -298,10 +298,10 @@ async def test_list_models_endpoint_unknown_provider_returns_400() -> None:
 
 @pytest.mark.asyncio
 async def test_list_models_endpoint_api_error_shows_error_in_html() -> None:
-    async def _list_models_error(api_key: str) -> list[ModelInfo]:
+    async def _list_models_error(provider_type: str, api_key: str) -> list[ModelInfo]:
         raise RuntimeError("Invalid API key")
 
-    with patch("hazlo.infrastructure.llm.providers.gemini.GeminiProvider.list_models", _list_models_error):
+    with patch("hazlo.infrastructure.api.routes.admin_llm_providers._list_models", _list_models_error):
         async with _client() as client:
             response = await client.post(
                 "/admin/llm-providers/models",
@@ -317,10 +317,10 @@ async def test_list_models_endpoint_api_error_shows_error_in_html() -> None:
 
 @pytest.mark.asyncio
 async def test_list_models_endpoint_no_models_shows_warning() -> None:
-    async def _list_models_empty(api_key: str) -> list[ModelInfo]:
+    async def _list_models_empty(provider_type: str, api_key: str) -> list[ModelInfo]:
         return []
 
-    with patch("hazlo.infrastructure.llm.providers.gemini.GeminiProvider.list_models", _list_models_empty):
+    with patch("hazlo.infrastructure.api.routes.admin_llm_providers._list_models", _list_models_empty):
         async with _client() as client:
             response = await client.post(
                 "/admin/llm-providers/models",
@@ -336,10 +336,10 @@ async def test_list_models_endpoint_no_models_shows_warning() -> None:
 
 @pytest.mark.asyncio
 async def test_list_models_endpoint_has_radio_inputs() -> None:
-    async def _list_models(api_key: str) -> list[ModelInfo]:
+    async def _list_models(provider_type: str, api_key: str) -> list[ModelInfo]:
         return _sample_models()
 
-    with patch("hazlo.infrastructure.llm.providers.gemini.GeminiProvider.list_models", _list_models):
+    with patch("hazlo.infrastructure.api.routes.admin_llm_providers._list_models", _list_models):
         async with _client() as client:
             response = await client.post(
                 "/admin/llm-providers/models",
