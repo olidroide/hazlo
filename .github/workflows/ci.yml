@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install mise
+        run: curl https://mise.run | sh
+
+      - name: Install tools
+        run: mise install
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Lint (includes security rules)
+        run: mise run lint
+
+      - name: Format check
+        run: mise run fmt -- --check
+
+      - name: Type check
+        run: mise run typecheck
+
+      - name: Dependency audit
+        run: uv audit
+
+      - name: Run tests
+        env:
+          HAZLO_ENV: test
+        run: mise run test

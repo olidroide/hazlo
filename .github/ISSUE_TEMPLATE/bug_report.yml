@@ -1,0 +1,86 @@
+name: Bug Report
+description: Report something that is not working as expected
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Please fill in the sections below.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of the bug.
+      placeholder: What happened? What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce the issue?
+      placeholder: |
+        1. Start the app with `mise run dev`
+        2. Navigate to /admin/sources
+        3. Click "Ejecutar ahora"
+        4. See error...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of the system is affected?
+      options:
+        - Domain layer
+        - Application layer (use cases)
+        - Infrastructure - API routes
+        - Infrastructure - Database / repositories
+        - Infrastructure - Adapters (source connectors)
+        - Infrastructure - Prefect flows
+        - Admin panel (templates / HTMX)
+        - Docker / infrastructure
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Relevant environment details
+      placeholder: |
+        - Python version:
+        - OS:
+        - Docker version:
+        - Database:
+      value: |
+        - Python version:
+        - OS:
+        - Docker version:
+        - Database:
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Error Output
+      description: Paste relevant log output or error traces.
+      render: python
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, or links.

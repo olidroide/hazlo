@@ -1,0 +1,52 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the suggestion! Please describe the feature you'd like to see.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this feature solve?
+      placeholder: I'm frustrated when...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this to work?
+      placeholder: It would be great if...
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of the system would this affect?
+      options:
+        - Domain layer
+        - Application layer (use cases)
+        - Infrastructure - API routes
+        - Infrastructure - Database / repositories
+        - Infrastructure - Adapters (source connectors)
+        - Infrastructure - Prefect flows
+        - Admin panel (templates / HTMX)
+        - Public agenda (future)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other solutions have you considered?
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context, mockups, or references.

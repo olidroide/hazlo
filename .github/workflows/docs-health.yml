@@ -1,0 +1,87 @@
+name: Docs Health
+
+on:
+  pull_request:
+    paths:
+      - 'hazlo/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'CONTRIBUTING.md'
+      - 'pyproject.toml'
+      - 'mise.toml'
+      - 'docker-compose.yml'
+
+jobs:
+  check-docs-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/checkout@v4
+
+      - name: Check ai-context.md references exist
+        run: |
+          FAIL=0
+          while IFS= read -r file; do
+            # Extract referenced file paths, strip leading ../ or ./
+            ref=$(echo "$file" | sed 's/.*(\(.*\)).*/\1/' | sed 's|^\.\./||')
+            if [ ! -f "$ref" ] && [ ! -f "docs/$ref" ]; then
+              echo "::error file=docs/ai-context.md::Referenced file not found: $ref"
+              FAIL=1
+            fi
+          done < <(grep -oP '\[.*?\]\(\K[^)]+' docs/ai-context.md)
+          exit $FAIL
+
+      - name: Check CHANGELOG has Unreleased or new version
+        run: |
+          if ! grep -qE '^\#\# \[(Unreleased|[0-9]{10})' CHANGELOG.md; then
+            echo "::error::CHANGELOG.md missing [Unreleased] or version entry"
+            exit 1
+          fi
+
+      - name: Check version is valid
+        run: |
+          VERSION=$(python3 -c "
+          with open('hazlo/__init__.py') as f:
+              for line in f:
+                  if line.startswith('__version__'):
+                      print(line.split('=')[1].strip().strip('\"').strip(\"'\"))
+          ")
+          if [ "$VERSION" = "0.0.0" ]; then
+            echo "Dev version (0.0.0) — OK"
+          elif echo "$VERSION" | grep -qP '^\d{12}$'; then
+            echo "Release version: $VERSION — OK"
+          else
+            echo "::error::Invalid version '$VERSION'. Must be '0.0.0' (dev) or YYYYMMDDHHMM (release)"
+            exit 1
+          fi
+
+      - name: Check markdown files have no broken internal links
+        run: |
+          FAIL=0
+          for md in README.md CHANGELOG.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md docs/ai-context.md; do
+            if [ ! -f "$md" ]; then
+              continue
+            fi
+            while IFS= read -r link; do
+              # Extract local .md links only
+              target=$(echo "$link" | sed 's/.*(\(.*\.md\)).*/\1/' | sed 's|^\.\./||')
+              if [ -n "$target" ] && [ ! -f "$target" ]; then
+                echo "::error file=$md::Broken link: $target"
+                FAIL=1
+              fi
+            done < <(grep -oP '\[.*?\]\([^)]*\.md[^)]*\)' "$md")
+          done
+          exit $FAIL
+
+      - name: Check required docs files exist
+        run: |
+          for f in README.md CHANGELOG.md CONTRIBUTING.md CODE_OF_CONDUCT.md LICENSE docs/ai-context.md; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Missing required file: $f"
+              exit 1
+            fi
+          done
+          echo "All required docs present"
