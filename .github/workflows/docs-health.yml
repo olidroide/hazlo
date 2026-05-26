@@ -16,10 +16,10 @@ jobs:
   check-docs-sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
-      - uses: actions/checkout@v4
+          python-version: '3.13'
+      - uses: actions/checkout@v5
 
       - name: Check ai-context.md references exist
         run: |
