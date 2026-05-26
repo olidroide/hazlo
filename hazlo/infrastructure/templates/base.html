@@ -35,27 +35,29 @@
     </style>
 </head>
 <body class="h-full bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
-      hx-boost="true"
-      hx-on::after-request="if(event.detail.successful) { document.querySelectorAll('.flash').forEach(el => el.remove()); }">
+    hx-boost="true"
+    hx-target="#main-content"
+    hx-swap="innerHTML"
+    hx-on::after-request="if(event.detail.successful) { document.querySelectorAll('.flash').forEach(el => el.remove()); }">
 
     <!-- Nav -->
     <nav class="bg-white dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex">
-                    <div class="flex-shrink-0 flex items-center">
-                        <a href="/" class="text-xl font-bold text-teal-600">Hazlo</a>
+                    <div class="shrink-0 flex items-center">
+                            <a href="/admin/sources/" class="text-xl font-bold text-teal-600">Hazlo</a>
                     </div>
                     <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
-                        <a href="/admin/sources"
+                        <a href="/admin/sources/"
                            class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-neutral-500 hover:text-neutral-700 hover:border-neutral-300">
                             Fuentes
                         </a>
-                        <a href="/admin/events?status=pending"
+                        <a href="/admin/events/?status=pending"
                            class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-neutral-500 hover:text-neutral-700 hover:border-neutral-300">
                             Eventos pendientes
                         </a>
-                        <a href="/admin/llm-providers"
+                            <a href="/admin/llm-providers/"
                            class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-neutral-500 hover:text-neutral-700 hover:border-neutral-300">
                             Proveedores LLM
                         </a>

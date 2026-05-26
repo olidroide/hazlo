@@ -20,6 +20,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **HTMX boosted navigation**: Preserved admin shell (header/nav) during internal navigation by targeting boosted swaps to `#main-content` in `base.html` (`hx-target` + `hx-swap="innerHTML"`). Combined with dynamic base template selection (`base.html` vs `base_htmx.html`), hard refresh stays full-page while internal navigation updates only section content.
+- **Sources detail navigation**: Hardened source detail links to use explicit HTMX container swaps (`hx-get` + `hx-target="#main-content"` + `hx-push-url="true"`) instead of inherited boost only, preventing header loss on `/admin/sources/{id}` transitions.
+- **Admin navigation redirects**: Normalized admin links to canonical trailing-slash routes (`/admin/sources/`, `/admin/events/?status=...`, `/admin/llm-providers/`) to avoid extra `307 Temporary Redirect` round-trips.
 - **LLM JSON parsing**: `maxOutputTokens: 200` truncated Gemini responses. Increased to 500. Pydantic AI structured output eliminates manual JSON parsing.
 - **Price display**: Show `amount_cents/100` correctly in euros.
 - **Repository upsert bug**: `EventRepository.save()` and `SourceRepository.save()` used `session.add()` which fails on duplicate entities. Changed to `session.merge()` for upsert behavior.

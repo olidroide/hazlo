@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends base %}
 
 {% block title %}{{ source.name }} - Hazlo Admin{% endblock %}
 
@@ -23,7 +23,13 @@
     <!-- Header -->
     <div class="flex justify-between items-center">
         <div>
-            <a href="/admin/sources" class="text-sm text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-white">&larr; Volver a fuentes</a>
+            <a href="/admin/sources/"
+               hx-boost="false"
+               hx-get="/admin/sources/"
+               hx-target="#main-content"
+               hx-swap="innerHTML"
+               hx-push-url="true"
+               class="text-sm text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-white">&larr; Volver a fuentes</a>
             <h1 class="text-2xl font-bold text-neutral-900 dark:text-white mt-1">{{ source.name }}</h1>
         </div>
         <button

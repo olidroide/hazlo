@@ -37,6 +37,11 @@ Write the test **before** the implementation. Watch it fail. Then make it pass.
 ## Conventions
 
 - **Architecture**: DDD — domain has zero framework imports. See [docs/ai-context.md](docs/ai-context.md).
+- **Frontend architecture (mandatory)**: HTMX + Jinja SSR with persistent shell.
+	- Hard refresh: full-page render (`base.html`).
+	- Internal navigation: swap only `#main-content`.
+	- Never replace full `<body>` during admin navigation.
+	- Use canonical trailing-slash admin URLs to avoid redirects.
 - **Versioning**: Timestamp format `YYYYMMDDHHMM` — **no semver**. Dev: `0.0.0`, release: automatic on merge to `main`.
 - **Branching**: `dev` for daily work, `main` for releases. PRs target `dev`.
 - **Commits**: [Conventional Commits](https://www.conventionalcommits.org/) — `feat(scope):`, `fix(scope):`, `docs:`, etc.

@@ -156,18 +156,18 @@ See `docs/agentic-system.md` → "LLM Evaluation" section.
 
 | Method | Path | Handler | Returns |
 |--------|------|---------|---------|
-| GET | `/admin/sources` | `list_sources` | HTML source list |
+| GET | `/admin/sources/` | `list_sources` | HTML source list |
 | GET | `/admin/sources/_new` | `new_source_form` | HTML create form |
-| POST | `/admin/sources` | `create_source` | HTML row (HTMX) |
+| POST | `/admin/sources/` | `create_source` | HTML row (HTMX) |
 | GET | `/admin/sources/{id}` | `get_source` | HTML detail |
 | PATCH | `/admin/sources/{id}/toggle` | `toggle_source` | HTML row (HTMX) |
-| GET | `/admin/events` | `list_events` | HTML event list (?status=) |
+| GET | `/admin/events/` | `list_events` | HTML event list (`?status=`) |
 | GET | `/admin/events/{id}` | `get_event` | HTML event card |
 | PATCH | `/admin/events/{id}/review` | `review_event` | HTML event card |
 | GET | `/admin/events/{id}/audit` | `get_event_audit` | HTML audit trail |
-| GET | `/admin/llm-providers` | `list_llm_providers` | HTML LLM provider list |
+| GET | `/admin/llm-providers/` | `list_llm_providers` | HTML LLM provider list |
 | GET | `/admin/llm-providers/_new` | `new_provider_form` | HTML create form |
-| POST | `/admin/llm-providers` | `create_provider` | HTML row (HTMX) |
+| POST | `/admin/llm-providers/` | `create_provider` | HTML row (HTMX) |
 | POST | `/admin/llm-providers/{id}/test` | `test_provider_connection` | JSON {success: bool} |
 | POST | `/admin/llm-providers/{id}/activate` | `activate_provider` | JSON {success: bool} |
 | DELETE | `/admin/llm-providers/{id}` | `delete_provider` | JSON {success: bool} |
@@ -175,6 +175,53 @@ See `docs/agentic-system.md` → "LLM Evaluation" section.
 
 All routes return server-rendered HTML. HTMX swaps partials (`_row.html`,
 `_event_card.html`, `_audit_trail.html`).
+
+For full-page admin templates, routing now selects base template by request type:
+- `HX-Request: true` → `base_htmx.html` (content-only fragment for boosted navigation)
+- regular browser request → `base.html` (full layout shell)
+
+`base.html` sets `hx-target="#main-content"` + `hx-swap="innerHTML"` on `<body>`, so boosted navigation keeps header/nav and only replaces the main section container.
+
+## HTMX + SSR Architecture Contract (MANDATORY)
+
+This project uses a strict SSR-first architecture with HTMX as progressive enhancement.
+
+### Design Rules
+
+1. **Hard refresh must always render full page shell**
+     - Full HTML document (`<html>`, `<head>`, nav, scripts) is rendered by Jinja template `base.html`.
+2. **Internal navigation must only replace section content**
+     - Boosted navigation swaps into `#main-content`, never the whole page body.
+3. **Header/nav must remain persistent across internal navigation**
+     - Shared shell elements stay outside `#main-content`.
+4. **Server remains SSR source of truth**
+     - HTMX consumes server-rendered fragments; no client-side SPA routing/state layer.
+
+### Implementation Pattern
+
+- `base.html` (full shell) includes:
+    - `hx-boost="true"`
+    - `hx-target="#main-content"`
+    - `hx-swap="innerHTML"`
+- Full-page templates use `{% extends base %}`.
+- Route handlers pass `base=get_base(request)` and `get_base` selects:
+    - `base.html` for non-HTMX requests
+    - `base_htmx.html` for `HX-Request: true`
+
+### Link and Endpoint Rules
+
+- Use canonical trailing-slash routes for list pages:
+    - `/admin/sources/`, `/admin/events/?status=...`, `/admin/llm-providers/`
+- Avoid 307 redirects in navigation paths.
+- For known fragile transitions (for example source-list to source-detail), prefer explicit HTMX attributes on links:
+    - `hx-get`, `hx-target="#main-content"`, `hx-swap="innerHTML"`, `hx-push-url="true"`.
+
+### Regression Checklist
+
+- Hard refresh on any admin page keeps full shell.
+- Boosted navigation does not remove/recreate header/nav.
+- HTMX responses for full-page routes do not include `<html>/<head>/<body>/<nav>`.
+- No unexpected 307 redirects in admin navigation.
 
 ## Tooling Commands
 

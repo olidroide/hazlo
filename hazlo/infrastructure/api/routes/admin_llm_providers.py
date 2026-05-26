@@ -12,7 +12,7 @@ from pydantic_ai.providers.google import GoogleProvider
 from pydantic_ai.providers.openrouter import OpenRouterProvider
 from starlette.responses import Response
 
-from hazlo.infrastructure.api.deps import get_llm_provider_repo
+from hazlo.infrastructure.api.deps import get_base, get_llm_provider_repo
 from hazlo.infrastructure.crypto import decrypt_value, encrypt_value
 from hazlo.infrastructure.db.repositories import LLMProviderRepository
 from hazlo.settings import get_settings
@@ -150,7 +150,7 @@ async def list_llm_providers(
     return request.state.templates.TemplateResponse(
         request,
         "admin/llm_providers/list.html",
-        {"providers": [_provider_dict(p) for p in providers]},
+        {"providers": [_provider_dict(p) for p in providers], "base": get_base(request)},
     )
 
 

@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import Response
 
 from alembic import command
@@ -113,6 +114,7 @@ app = FastAPI(
 
 app.add_middleware(BasicAuthMiddleware)
 app.add_middleware(TemplateMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 app.include_router(admin_sources.router, prefix="/admin/sources", tags=["admin-sources"])
 app.include_router(admin_events.router, prefix="/admin/events", tags=["admin-events"])

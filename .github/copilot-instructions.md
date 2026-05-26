@@ -32,6 +32,17 @@ infrastructure/  ← repositories, DB adapters, HTTP API, connectors, Prefect, q
 - Use ports and adapters to decouple connectors and persistence.
 - Prefect flows live in `infrastructure/`; they orchestrate application use cases — never domain logic.
 
+### HTMX + SSR UI Architecture (MANDATORY)
+
+Always preserve the server-rendered shell and apply HTMX as progressive enhancement:
+
+- Hard refresh must render full page shell via Jinja `base.html`.
+- Internal admin navigation must swap only `#main-content` (do not replace whole `<body>`).
+- Keep nav/header persistent across section changes.
+- Use canonical trailing-slash admin list routes to avoid redirect hops.
+- Prefer explicit HTMX attributes (`hx-get`, `hx-target`, `hx-swap`, `hx-push-url`) on navigation links when inherited boost behavior is fragile.
+- For full-page templates, use `{% extends base %}` and select base template via request type (`HX-Request` vs normal request).
+
 ---
 
 ## Tech Stack

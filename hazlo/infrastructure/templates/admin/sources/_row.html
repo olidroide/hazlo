@@ -1,6 +1,12 @@
 <tr id="source-{{ source.id }}" class="hover:bg-neutral-50 dark:hover:bg-neutral-700">
     <td class="px-6 py-4 whitespace-nowrap">
-        <a href="/admin/sources/{{ source.id }}" class="text-sm font-medium text-teal-600 hover:text-teal-700">
+        <a href="/admin/sources/{{ source.id }}"
+           hx-boost="false"
+           hx-get="/admin/sources/{{ source.id }}"
+           hx-target="#main-content"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           class="text-sm font-medium text-teal-600 hover:text-teal-700">
             {{ source.name }}
         </a>
     </td>
@@ -47,6 +53,12 @@
             <span class="btn-spinner mr-1"></span>
             {% if source.is_active %}Desactivar{% else %}Activar{% endif %}
         </button>
-        <a href="/admin/sources/{{ source.id }}" class="text-teal-600 hover:text-teal-700">Ver</a>
+        <a href="/admin/sources/{{ source.id }}"
+           hx-boost="false"
+           hx-get="/admin/sources/{{ source.id }}"
+           hx-target="#main-content"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           class="text-teal-600 hover:text-teal-700">Ver</a>
     </td>
 </tr>

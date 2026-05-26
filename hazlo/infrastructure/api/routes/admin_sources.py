@@ -10,7 +10,7 @@ from collections.abc import AsyncIterable
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
-from hazlo.infrastructure.api.deps import get_source_repo
+from hazlo.infrastructure.api.deps import get_base, get_source_repo
 from hazlo.infrastructure.db.repositories import SourceRepository
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ async def list_sources(
     return request.state.templates.TemplateResponse(
         request,
         "admin/sources/list.html",
-        {"sources": source_dicts},
+        {"sources": source_dicts, "base": get_base(request)},
     )
 
 
@@ -111,7 +111,7 @@ async def get_source(
     return request.state.templates.TemplateResponse(
         request,
         "admin/sources/detail.html",
-        {"source": _source_dict(source), "history": history, "health": health},
+        {"source": _source_dict(source), "history": history, "health": health, "base": get_base(request)},
     )
 
 

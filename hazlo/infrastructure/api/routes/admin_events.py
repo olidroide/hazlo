@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 
 from hazlo.application.use_cases.review_event import InvalidTransitionError, ReviewEvent
 from hazlo.domain.event import EventStatus
-from hazlo.infrastructure.api.deps import get_event_repo, get_review_repo
+from hazlo.infrastructure.api.deps import get_base, get_event_repo, get_review_repo
 from hazlo.infrastructure.db.repositories import EventRepository, ReviewRepository
 
 logger = logging.getLogger(__name__)
@@ -99,6 +99,7 @@ async def list_events(
             "has_more": has_more,
             "page_size": PAGE_SIZE,
             "include_expired": include_expired,
+            "base": get_base(request),
         },
     )
 

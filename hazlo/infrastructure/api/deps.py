@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hazlo.infrastructure.db.repositories import (
@@ -30,3 +30,10 @@ def get_review_repo(session: AsyncSession = Depends(get_session)) -> ReviewRepos
 
 def get_llm_provider_repo(session: AsyncSession = Depends(get_session)) -> LLMProviderRepository:
     return LLMProviderRepository(session)
+
+
+def get_base(request: Request) -> str:
+    """Return the appropriate base template for full-page vs HTMX-boosted requests."""
+    if request.headers.get("HX-Request"):
+        return "base_htmx.html"
+    return "base.html"
