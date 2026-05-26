@@ -37,6 +37,18 @@ def _event_to_dict(event) -> dict:
         }
         if event.price
         else None,
+        "ticket_info": {
+            "url": event.ticket_info.url if event.ticket_info else None,
+            "notes": event.ticket_info.notes if event.ticket_info else None,
+        }
+        if event.ticket_info
+        else None,
+        "extracted_at": event.extracted_at,
+        "created_at": event.created_at,
+        "updated_at": event.updated_at,
+        "agent_review": event.agent_review,
+        "content_hash": event.content_hash,
+        "idempotency_key": event.idempotency_key,
     }
 
 
@@ -106,6 +118,23 @@ async def get_event(
     return request.state.templates.TemplateResponse(
         request,
         "admin/events/_event_card.html",
+        {"event": _event_to_dict(event)},
+    )
+
+
+@router.get("/{event_id}/detail")
+async def get_event_detail(
+    request: Request,
+    event_id: uuid.UUID,
+    event_repo: EventRepository = Depends(get_event_repo),
+):
+    event = await event_repo.get(event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    return request.state.templates.TemplateResponse(
+        request,
+        "admin/events/_event_detail.html",
         {"event": _event_to_dict(event)},
     )
 

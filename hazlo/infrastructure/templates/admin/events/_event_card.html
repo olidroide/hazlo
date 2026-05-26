@@ -62,7 +62,7 @@
             <svg class="w-4 h-4 mr-1.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
-            {% if event.price.is_free %}Gratis{% else %}{{ event.price.amount }}{% endif %}
+            {% if event.price.is_free %}Gratis{% else %}{{ "%.2f"|format(event.price.amount_cents / 100) }}€{% endif %}
         </p>
         {% endif %}
     </div>
@@ -98,10 +98,29 @@
             Rechazar
         </button>
     </div>
+    {% elif event.status == 'approved' %}
+    <div class="flex space-x-2 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+        <button
+            hx-patch="/admin/events/{{ event.id }}/review"
+            hx-vals='{"action": "publish"}'
+            hx-target="#event-{{ event.id }}"
+            hx-swap="outerHTML"
+            hx-confirm="¿Publicar este evento?"
+            class="flex-1 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md">
+            Publicar
+        </button>
+    </div>
     {% endif %}
 
-    <!-- Audit trail link -->
-    <div class="pt-2 border-t border-neutral-200 dark:border-neutral-700">
+    <!-- Detail and Audit links -->
+    <div class="flex justify-between pt-2 border-t border-neutral-200 dark:border-neutral-700">
+        <button
+            hx-get="/admin/events/{{ event.id }}/detail"
+            hx-target="#detail-panel"
+            hx-swap="innerHTML"
+            class="text-xs text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300 font-medium">
+            Ver detalle
+        </button>
         <button
             hx-get="/admin/events/{{ event.id }}/audit"
             hx-target="#audit-panel"

@@ -1,0 +1,151 @@
+<div class="space-y-4">
+    <!-- Header -->
+    <div class="border-b border-neutral-200 dark:border-neutral-700 pb-3">
+        <h2 class="text-lg font-bold text-neutral-900 dark:text-white mb-2">{{ event.title }}</h2>
+        <div class="flex items-center gap-2">
+            <!-- Status badge -->
+            {% if event.status == 'pending' %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">Pending</span>
+            {% elif event.status == 'approved' %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">Approved</span>
+            {% elif event.status == 'rejected' %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">Rejected</span>
+            {% elif event.status == 'published' %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">Published</span>
+            {% endif %}
+            <!-- Confidence score -->
+            {% if event.confidence_score is not none %}
+            {% set conf = event.confidence_score %}
+            <div class="flex items-center gap-2">
+                <div class="w-24 bg-neutral-200 dark:bg-neutral-700 rounded-full h-2">
+                    <div class="h-2 rounded-full {% if conf >= 0.9 %}bg-green-500{% elif conf >= 0.7 %}bg-amber-500{% else %}bg-red-500{% endif %}" style="width: {{ (conf * 100)|int }}%"></div>
+                </div>
+                <span class="text-xs text-neutral-600 dark:text-neutral-400">{{ "%.0f"|format(conf * 100) }}%</span>
+            </div>
+            {% else %}
+            <span class="text-xs text-neutral-500 dark:text-neutral-400">Sin puntuación</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Location -->
+    <div>
+        <h3 class="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Ubicación</h3>
+        {% if event.location %}
+        <div class="text-sm text-neutral-600 dark:text-neutral-400 space-y-0.5">
+            <p>{{ event.location.address }}</p>
+            {% if event.location.neighborhood %}<p>Barrio: {{ event.location.neighborhood }}</p>{% endif %}
+            {% if event.location.metro %}<p>Metro: {{ event.location.metro }}</p>{% endif %}
+        </div>
+        {% else %}
+        <p class="text-sm text-neutral-500 dark:text-neutral-400 italic">Sin ubicación</p>
+        {% endif %}
+    </div>
+
+    <!-- Dates -->
+    <div>
+        <h3 class="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Fechas</h3>
+        <div class="text-sm text-neutral-600 dark:text-neutral-400 space-y-0.5">
+            {% if event.start_at %}
+            <p>Inicio: {{ event.start_at.strftime('%d/%m/%Y %H:%M') }}</p>
+            {% endif %}
+            {% if event.end_at %}
+            <p>Fin: {{ event.end_at.strftime('%d/%m/%Y %H:%M') }}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Price -->
+    <div>
+        <h3 class="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Precio</h3>
+        {% if event.price %}
+        <div class="text-sm text-neutral-600 dark:text-neutral-400">
+            {% if event.price.is_free %}
+            <p>Gratis</p>
+            {% elif event.price.amount_cents %}
+            <p>{{ "%.2f"|format(event.price.amount_cents / 100) }}€</p>
+            {% endif %}
+            {% if event.price.notes %}
+            <p class="text-xs text-neutral-500 dark:text-neutral-500 mt-1">{{ event.price.notes }}</p>
+            {% endif %}
+        </div>
+        {% else %}
+        <p class="text-sm text-neutral-500 dark:text-neutral-400 italic">Sin información de precio</p>
+        {% endif %}
+    </div>
+
+    <!-- Ticket Info -->
+    <div>
+        <h3 class="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Entradas</h3>
+        {% if event.ticket_info and event.ticket_info.url %}
+        <div class="text-sm">
+            <a href="{{ event.ticket_info.url }}" target="_blank" class="text-teal-600 dark:text-teal-400 hover:underline break-all">
+                {{ event.ticket_info.url }}
+            </a>
+            {% if event.ticket_info.notes %}
+            <p class="text-xs text-neutral-500 dark:text-neutral-500 mt-1">{{ event.ticket_info.notes }}</p>
+            {% endif %}
+        </div>
+        {% else %}
+        <p class="text-sm text-neutral-500 dark:text-neutral-400 italic">Sin enlace de entradas</p>
+        {% endif %}
+    </div>
+
+    <!-- Classification -->
+    <div>
+        <h3 class="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Clasificación</h3>
+        <div class="flex gap-2">
+            {% if event.is_children_activity %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">Infantil</span>
+            {% endif %}
+            {% if event.is_toddler_friendly %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300">Bebés</span>
+            {% endif %}
+            {% if not event.is_children_activity and not event.is_toddler_friendly %}
+            <span class="text-sm text-neutral-500 dark:text-neutral-400 italic">General</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Agent Review (collapsible) -->
+    {% if event.agent_review %}
+    <div>
+        <button
+            onclick="this.nextElementSibling.classList.toggle('hidden')"
+            class="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1 flex items-center gap-1 hover:text-neutral-900 dark:hover:text-white">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+            Respuesta del clasificador (LLM)
+        </button>
+        <div class="hidden mt-2 p-3 bg-neutral-50 dark:bg-neutral-900 rounded text-xs font-mono text-neutral-600 dark:text-neutral-400 overflow-x-auto">
+            <pre>{{ event.agent_review | tojson(indent=2) }}</pre>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Metadata -->
+    <div class="border-t border-neutral-200 dark:border-neutral-700 pt-3">
+        <h3 class="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2">Metadata</h3>
+        <div class="text-xs text-neutral-500 dark:text-neutral-500 space-y-1">
+            {% if event.source_url %}
+            <p><span class="font-medium">Fuente:</span> <a href="{{ event.source_url }}" target="_blank" class="text-teal-600 dark:text-teal-400 hover:underline break-all">{{ event.source_url }}</a></p>
+            {% endif %}
+            {% if event.extracted_at %}
+            <p><span class="font-medium">Extraído:</span> {{ event.extracted_at.strftime('%d/%m/%Y %H:%M') }}</p>
+            {% endif %}
+            {% if event.created_at %}
+            <p><span class="font-medium">Creado:</span> {{ event.created_at.strftime('%d/%m/%Y %H:%M') }}</p>
+            {% endif %}
+            {% if event.updated_at %}
+            <p><span class="font-medium">Actualizado:</span> {{ event.updated_at.strftime('%d/%m/%Y %H:%M') }}</p>
+            {% endif %}
+            {% if event.content_hash %}
+            <p><span class="font-medium">Content hash:</span> <code class="text-xs">{{ event.content_hash[:16] }}...</code></p>
+            {% endif %}
+            {% if event.idempotency_key %}
+            <p><span class="font-medium">Idempotency:</span> <code class="text-xs">{{ event.idempotency_key[:16] }}...</code></p>
+            {% endif %}
+        </div>
+    </div>
+</div>
