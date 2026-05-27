@@ -75,11 +75,15 @@ async def build_llm_infrastructure(
     logger = logging.getLogger(__name__)
     settings = get_settings()
 
-    # Fetch active provider
-    result = await session.execute(select(LLMProviderModel).where(LLMProviderModel.is_active))
-    active_provider = result.scalar_one_or_none()
+    # Fetch all active providers, sorted by priority
+    result = await session.execute(
+        select(LLMProviderModel)
+        .where(LLMProviderModel.is_active)
+        .order_by(LLMProviderModel.priority)
+    )
+    active_providers = list(result.scalars().all())
 
-    if active_provider is None:
+    if not active_providers:
         logger.warning("No active LLM provider configured")
         return (
             None,
@@ -109,9 +113,7 @@ async def build_llm_infrastructure(
     # Fallback models: ALL other providers sorted by tool support + priority
     # Prioritize models that support tool calling (for structured output)
     result = await session.execute(
-        select(LLMProviderModel)
-        .where(LLMProviderModel.id != active_provider.id)
-        .order_by(LLMProviderModel.priority)
+        select(LLMProviderModel).where(LLMProviderModel.id != active_provider.id).order_by(LLMProviderModel.priority)
     )
     fallback_providers = result.scalars().all()
 
