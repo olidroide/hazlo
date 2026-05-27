@@ -103,19 +103,17 @@ async def build_llm_infrastructure(
 
     models = []
 
-    # Primary model (active provider)
-    api_key = decrypt_value(active_provider.api_key_encrypted, settings.hazlo_secret_key)
-    model = await build_pydantic_model(active_provider, api_key)
+    # Primary model (first active provider by priority)
+    primary_provider = active_providers[0]
+    api_key = decrypt_value(primary_provider.api_key_encrypted, settings.hazlo_secret_key)
+    model = await build_pydantic_model(primary_provider, api_key)
     if model:
-        logger.info("Loaded primary LLM: %s (%s)", active_provider.model, active_provider.provider_type)
-        models.append((model, active_provider.model, True))  # (model, name, supports_tools)
+        logger.info("Loaded primary LLM: %s (%s)", primary_provider.model, primary_provider.provider_type)
+        models.append((model, primary_provider.model, True))  # (model, name, supports_tools)
 
-    # Fallback models: ALL other providers sorted by tool support + priority
+    # Fallback models: remaining active providers sorted by tool support
     # Prioritize models that support tool calling (for structured output)
-    result = await session.execute(
-        select(LLMProviderModel).where(LLMProviderModel.id != active_provider.id).order_by(LLMProviderModel.priority)
-    )
-    fallback_providers = result.scalars().all()
+    fallback_providers = active_providers[1:] if len(active_providers) > 1 else []
 
     # Sort: tool-supporting first, then by priority
     fallback_providers_sorted = sorted(
@@ -138,7 +136,7 @@ async def build_llm_infrastructure(
             models.append((fp_model, fp.model, supports_tools))
 
     if not models:
-        logger.error("No LLM models could be built from providers")
+        logger.error("No LLM models could be built from active providers")
         return (
             None,
             ReviewEngine(auto_approve_threshold=settings.auto_approve_threshold),

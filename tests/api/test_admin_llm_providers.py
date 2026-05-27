@@ -149,34 +149,33 @@ async def test_new_provider_form_has_provider_dropdown() -> None:
 
 
 @pytest.mark.asyncio
-async def test_activate_provider_returns_row_html() -> None:
+async def test_toggle_provider_active_returns_row_html() -> None:
     provider = _make_provider_model(is_active=False)
-    activated = _make_provider_model(id=provider.id, is_active=True)
+    toggled = _make_provider_model(id=provider.id, is_active=True)
     mock_repo = MagicMock(spec=LLMProviderRepository)
-    mock_repo.set_active = AsyncMock(return_value=activated)
+    mock_repo.toggle_active = AsyncMock(return_value=toggled)
 
     _set_provider_repo_override(mock_repo)
     try:
         async with _client() as client:
-            response = await client.post(f"/admin/llm-providers/{provider.id}/activate")
+            response = await client.post(f"/admin/llm-providers/{provider.id}/toggle-active")
     finally:
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert "Active" in response.text
-    assert "Activate" not in response.text
+    assert "checked" in response.text
 
 
 @pytest.mark.asyncio
-async def test_activate_provider_not_found() -> None:
+async def test_toggle_provider_active_not_found() -> None:
     provider_id = uuid.uuid4()
     mock_repo = MagicMock(spec=LLMProviderRepository)
-    mock_repo.set_active = AsyncMock(return_value=None)
+    mock_repo.toggle_active = AsyncMock(return_value=None)
 
     _set_provider_repo_override(mock_repo)
     try:
         async with _client() as client:
-            response = await client.post(f"/admin/llm-providers/{provider_id}/activate")
+            response = await client.post(f"/admin/llm-providers/{provider_id}/toggle-active")
     finally:
         app.dependency_overrides.clear()
 

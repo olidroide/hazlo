@@ -300,21 +300,25 @@ class LLMProviderRepository:
         await self._session.refresh(provider)
         return provider
 
-    async def set_active(self, provider_id: uuid.UUID) -> LLMProviderModel | None:
+    async def toggle_active(self, provider_id: uuid.UUID) -> LLMProviderModel | None:
+        """Toggle the active status of a provider without affecting others."""
         from hazlo.infrastructure.db.models import _utcnow
 
-        await self._session.execute(update(LLMProviderModel).values(is_active=False, updated_at=_utcnow()))
+        model = await self.get(provider_id)
+        if model is None:
+            return None
+
         stmt = (
             update(LLMProviderModel)
             .where(LLMProviderModel.id == provider_id)
-            .values(is_active=True, updated_at=_utcnow())
+            .values(is_active=not model.is_active, updated_at=_utcnow())
             .returning(LLMProviderModel)
         )
         result = await self._session.execute(stmt)
-        model = result.scalar_one_or_none()
-        if model:
+        updated_model = result.scalar_one_or_none()
+        if updated_model:
             await self._session.commit()
-        return model
+        return updated_model
 
     async def delete(self, provider_id: uuid.UUID) -> bool:
         result = await self._session.execute(select(LLMProviderModel).where(LLMProviderModel.id == provider_id))

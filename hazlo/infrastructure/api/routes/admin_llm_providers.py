@@ -271,13 +271,14 @@ async def test_provider_connection(
     )
 
 
-@router.post("/{provider_id}/activate")
-async def activate_provider(
+@router.post("/{provider_id}/toggle-active")
+async def toggle_provider_active(
     provider_id: uuid.UUID,
     request: Request,
     repo: LLMProviderRepository = Depends(get_llm_provider_repo),
 ):
-    model = await repo.set_active(provider_id)
+    """Toggle the active status of a provider without affecting others."""
+    model = await repo.toggle_active(provider_id)
     if model is None:
         raise HTTPException(status_code=404, detail="Provider not found")
     return request.state.templates.TemplateResponse(
