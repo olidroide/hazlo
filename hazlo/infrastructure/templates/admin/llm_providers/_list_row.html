@@ -2,35 +2,52 @@
   <td class="px-6 py-4 whitespace-nowrap">{{ provider.name }}</td>
   <td class="px-6 py-4 whitespace-nowrap">{{ provider.provider_type }}</td>
   <td class="px-6 py-4 whitespace-nowrap">{{ provider.model }}</td>
-  <td class="px-6 py-4 whitespace-nowrap relative">
+  <td class="px-6 py-4 whitespace-nowrap">
+    <div class="inline-flex items-center gap-2">
     <input
+      id="provider-active-{{ provider.id }}"
       type="checkbox"
       hx-post="/admin/llm-providers/{{ provider.id }}/toggle-active"
       hx-target="#provider-row-{{ provider.id }}"
       hx-swap="outerHTML"
       hx-disabled-elt="this"
-      hx-indicator="#loading-{{ provider.id }}"
+      hx-on::before-request="document.getElementById('loading-{{ provider.id }}').style.display='flex'"
+      hx-on::after-request="document.getElementById('loading-{{ provider.id }}').style.display='none'"
       {% if provider.is_active %}checked{% endif %}
-      class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50"
+      class="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50"
     />
-    <div id="loading-{{ provider.id }}" style="display: none;" class="absolute inset-0 flex items-center justify-center">
-      <svg class="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+    <label for="provider-active-{{ provider.id }}" class="text-sm text-gray-700 cursor-pointer select-none">Active</label>
+    <span id="loading-{{ provider.id }}" style="display: none;" class="inline-flex items-center gap-1 text-blue-600 pointer-events-none">
+      <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
       </svg>
+      <span class="text-xs">Saving...</span>
+    </span>
     </div>
   </td>
   <td class="px-6 py-4 whitespace-nowrap">{{ provider.priority }}</td>
   <td class="px-6 py-4 whitespace-nowrap">{% if provider.cost_per_1k_tokens_micros %}${{ "%.4f"|format(provider.cost_per_1k_tokens_micros / 1000000) }}{% else %}-{% endif %}</td>
   <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-    <span id="provider-test-result"></span>
+    <span id="provider-test-result-{{ provider.id }}"></span>
     <button
       hx-post="/admin/llm-providers/{{ provider.id }}/test"
-      hx-swap="none"
+      hx-target="#provider-test-result-{{ provider.id }}"
+      hx-swap="innerHTML"
+      hx-disabled-elt="this"
+      hx-on::before-request="document.getElementById('test-loading-{{ provider.id }}').style.display='inline-flex'"
+      hx-on::after-request="document.getElementById('test-loading-{{ provider.id }}').style.display='none'"
       class="text-indigo-600 hover:text-indigo-900 mr-3"
     >
       Test
     </button>
+    <span id="test-loading-{{ provider.id }}" style="display: none;" class="inline-flex items-center gap-1 mr-3 text-indigo-600 pointer-events-none">
+      <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+      </svg>
+      <span class="text-xs">Testing...</span>
+    </span>
     <button
       hx-delete="/admin/llm-providers/{{ provider.id }}"
       hx-target="#provider-row-{{ provider.id }}"

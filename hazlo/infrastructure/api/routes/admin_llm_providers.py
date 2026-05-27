@@ -260,14 +260,14 @@ async def test_provider_connection(
             request,
             "admin/llm_providers/_test_result.html",
             {"success": False, "error": str(exc)},
-            headers={"HX-Retarget": "#provider-test-result", "HX-Reswap": "innerHTML"},
+            headers={"HX-Retarget": f"#provider-test-result-{provider_id}", "HX-Reswap": "innerHTML"},
         )
 
     return request.state.templates.TemplateResponse(
         request,
         "admin/llm_providers/_test_result.html",
         {"success": success},
-        headers={"HX-Retarget": "#provider-test-result", "HX-Reswap": "innerHTML"},
+        headers={"HX-Retarget": f"#provider-test-result-{provider_id}", "HX-Reswap": "innerHTML"},
     )
 
 

@@ -231,6 +231,55 @@ async def test_test_provider_not_found_returns_404() -> None:
     assert response.status_code == 404
 
 
+@pytest.mark.asyncio
+async def test_test_provider_connection_sets_row_specific_retarget_header() -> None:
+    provider = _make_provider_model()
+    mock_repo = MagicMock(spec=LLMProviderRepository)
+    mock_repo.get = AsyncMock(return_value=provider)
+
+    _set_provider_repo_override(mock_repo)
+    try:
+        with (
+            patch(
+                "hazlo.infrastructure.api.routes.admin_llm_providers.decrypt_value",
+                return_value="test-api-key",
+            ),
+            patch(
+                "hazlo.infrastructure.api.routes.admin_llm_providers._test_connection",
+                new=AsyncMock(return_value=True),
+            ),
+        ):
+            async with _client() as client:
+                response = await client.post(f"/admin/llm-providers/{provider.id}/test")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.headers.get("HX-Retarget") == f"#provider-test-result-{provider.id}"
+    assert response.headers.get("HX-Reswap") == "innerHTML"
+
+
+@pytest.mark.asyncio
+async def test_list_providers_renders_row_scoped_test_target_and_indicators() -> None:
+    provider = _make_provider_model()
+    mock_repo = MagicMock(spec=LLMProviderRepository)
+    mock_repo.list_all = AsyncMock(return_value=[provider])
+
+    _set_provider_repo_override(mock_repo)
+    try:
+        async with _client() as client:
+            response = await client.get("/admin/llm-providers/")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert f'id="provider-test-result-{provider.id}"' in response.text
+    assert f'hx-target="#provider-test-result-{provider.id}"' in response.text
+    assert f'id="test-loading-{provider.id}"' in response.text
+    assert "hx-on::before-request" in response.text
+    assert "hx-on::after-request" in response.text
+
+
 # ── /models endpoint tests ──────────────────────────────────────────────
 
 
@@ -427,7 +476,7 @@ async def test_toggle_provider_updates_correct_row_with_htmx() -> None:
     This test verifies that:
     1. Checkbox has correct hx-target (provider-row-ID)
     2. Checkbox is disabled during request (hx-disabled-elt)
-    3. Loading indicator is present (hx-indicator)
+    3. Loading indicator hooks are present (hx-on)
     4. Response contains the correct row ID in the HTML
     """
     provider2 = _make_provider_model(id=uuid.uuid4(), name="Provider 2", is_active=False)
@@ -454,10 +503,12 @@ async def test_toggle_provider_updates_correct_row_with_htmx() -> None:
     # ✅ Verify HTMX attributes are present in the checkbox
     assert f'hx-target="#provider-row-{provider2.id}"' in response.text
     assert 'hx-disabled-elt="this"' in response.text
-    assert f'hx-indicator="#loading-{provider2.id}"' in response.text
+    assert "hx-on::before-request" in response.text
+    assert "hx-on::after-request" in response.text
 
     # ✅ Verify loading indicator div exists
     assert f'id="loading-{provider2.id}"' in response.text
+    assert "display: none;" in response.text
     assert "animate-spin" in response.text
 
     # ✅ Verify response headers guide HTMX (if retargeting is needed)
