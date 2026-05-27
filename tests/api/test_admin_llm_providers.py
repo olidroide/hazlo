@@ -432,9 +432,7 @@ async def test_toggle_provider_updates_correct_row_with_htmx() -> None:
     """
     provider2 = _make_provider_model(id=uuid.uuid4(), name="Provider 2", is_active=False)
 
-    toggled_provider2 = _make_provider_model(
-        id=provider2.id, name="Provider 2", is_active=True
-    )
+    toggled_provider2 = _make_provider_model(id=provider2.id, name="Provider 2", is_active=True)
 
     mock_repo = MagicMock(spec=LLMProviderRepository)
     mock_repo.toggle_active = AsyncMock(return_value=toggled_provider2)
@@ -442,9 +440,7 @@ async def test_toggle_provider_updates_correct_row_with_htmx() -> None:
     _set_provider_repo_override(mock_repo)
     try:
         async with _client() as client:
-            response = await client.post(
-                f"/admin/llm-providers/{provider2.id}/toggle-active"
-            )
+            response = await client.post(f"/admin/llm-providers/{provider2.id}/toggle-active")
     finally:
         app.dependency_overrides.clear()
 
@@ -462,7 +458,7 @@ async def test_toggle_provider_updates_correct_row_with_htmx() -> None:
 
     # ✅ Verify loading indicator div exists
     assert f'id="loading-{provider2.id}"' in response.text
-    assert 'animate-spin' in response.text
+    assert "animate-spin" in response.text
 
     # ✅ Verify response headers guide HTMX (if retargeting is needed)
     assert response.headers.get("HX-Retarget") == f"#provider-row-{provider2.id}"
