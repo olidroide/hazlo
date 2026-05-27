@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import traceback
 import uuid
 
 from prefect import flow, task
@@ -9,9 +10,17 @@ from prefect.logging import get_run_logger
 from hazlo.application.services import DedupService, EnrichmentService
 from hazlo.application.use_cases.ingest_source import IngestSource
 from hazlo.infrastructure.llm.factory import build_llm_infrastructure
+from hazlo.settings import get_settings
+
+_settings = get_settings()
 
 
-@task(name="fetch-source", retries=2, retry_delay_seconds=30)
+@task(
+    name="fetch-source",
+    retries=2,
+    retry_delay_seconds=30,
+    timeout_seconds=_settings.prefect_fetch_source_task_timeout_seconds,
+)
 async def fetch_source_task(source_id: str) -> dict:
     logger = get_run_logger()
     t0 = time.monotonic()
@@ -36,9 +45,25 @@ async def fetch_source_task(source_id: str) -> dict:
             source.url or "IMAP",
         )
 
+        t_urls = time.monotonic()
         existing_urls = await event_repo.list_existing_urls_for_dedup()
+        logger.info(
+            "[%s] loaded existing URLs for dedup: %d (%.1fms)",
+            source_id[:8],
+            len(existing_urls),
+            (time.monotonic() - t_urls) * 1000,
+        )
 
+        t_llm = time.monotonic()
         classifier, review_engine, llm_enrichment, date_parser = await build_llm_infrastructure(session)
+        logger.info(
+            "[%s] LLM infra ready (classifier=%s, location=%s, date_parser=%s) in %.1fms",
+            source_id[:8],
+            classifier is not None,
+            llm_enrichment is not None,
+            date_parser is not None,
+            (time.monotonic() - t_llm) * 1000,
+        )
 
         if classifier is not None:
             logger.info("[%s] LLM classifier active", source_id[:8])
@@ -55,10 +80,19 @@ async def fetch_source_task(source_id: str) -> dict:
             date_parser=date_parser,
             event_repo=event_repo,
         )
+        t_execute = time.monotonic()
         result = await use_case.execute(source=source, existing_urls=existing_urls)
+        logger.info("[%s] execute completed in %.1fms", source_id[:8], (time.monotonic() - t_execute) * 1000)
 
+        t_save = time.monotonic()
         for event in result.events_to_save:
             await event_repo.save(event)
+        logger.info(
+            "[%s] persisted %d events in %.1fms",
+            source_id[:8],
+            len(result.events_to_save),
+            (time.monotonic() - t_save) * 1000,
+        )
 
         await _save_extraction_run(session, source.id, result)
 
@@ -66,7 +100,9 @@ async def fetch_source_task(source_id: str) -> dict:
 
         status = "success" if not result.errors else "error"
         await source_repo.update_last_run(source.id, status)
+        t_commit = time.monotonic()
         await session.commit()
+        logger.info("[%s] DB commit done in %.1fms", source_id[:8], (time.monotonic() - t_commit) * 1000)
 
         duration = time.monotonic() - t0
 
@@ -130,7 +166,11 @@ async def _save_extraction_run(session, source_id, result):
     session.add(run)
 
 
-@flow(name="ingest-all-sources", log_prints=True)
+@flow(
+    name="ingest-all-sources",
+    log_prints=True,
+    timeout_seconds=_settings.prefect_ingest_flow_timeout_seconds,
+)
 async def ingest_all_sources_flow() -> None:
     import asyncio
 
@@ -165,7 +205,8 @@ async def ingest_all_sources_flow() -> None:
     for r in results:
         if isinstance(r, Exception):
             total_errors += 1
-            logger.error("Source task failed: %s", r)
+            tb = "".join(traceback.format_exception(type(r), r, r.__traceback__))
+            logger.error("Source task failed with exception: %s\n%s", r, tb)
             source_breakdown.append({"name": "UNKNOWN", "status": "FAILED", "error": str(r)})
         elif isinstance(r, dict):
             name = r.get("source_name", r.get("source_id", "unknown"))

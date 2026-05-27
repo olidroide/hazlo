@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from xml.etree import ElementTree
 
@@ -235,6 +235,57 @@ async def test_rss_adapter_http_error() -> None:
 
         with pytest.raises(httpx.HTTPStatusError):
             await adapter.fetch(_make_source())
+
+
+@pytest.mark.asyncio
+async def test_rss_adapter_limits_to_30_most_recent_items() -> None:
+    adapter = RssSourceAdapter()
+    services_xml = ""
+    for day in range(1, 36):
+        event_date = datetime(2026, 1, 1) + timedelta(days=day - 1)
+        ddmmyyyy = event_date.strftime("%d/%m/%Y")
+        yyyy_mm_dd = event_date.strftime("%Y-%m-%d")
+        services_xml += f"""
+    <service id=\"{day}\" fechaActualizacion=\"{yyyy_mm_dd}\">
+        <basicData>
+            <title>Event {day}</title>
+            <web>https://example.com/event-{day}</web>
+        </basicData>
+        <geoData>
+            <address>Address {day}</address>
+            <subAdministrativeArea>Madrid</subAdministrativeArea>
+        </geoData>
+        <extradata>
+            <item name=\"Horario\"><![CDATA[<p>10:00 h</p>]]></item>
+            <fechas>
+                <rango>
+                    <inicio>{ddmmyyyy}</inicio>
+                    <fin>{ddmmyyyy}</fin>
+                </rango>
+            </fechas>
+        </extradata>
+    </service>
+"""
+
+    xml = f"""<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<serviceList>
+{services_xml}
+</serviceList>
+"""
+    mock_response = _mock_httpx_response(xml)
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_class.return_value = mock_client
+
+        raw_events = await adapter.fetch(_make_source())
+
+    assert len(raw_events) == 30
+    assert raw_events[0]["title"] == "Event 35"
+    assert raw_events[-1]["title"] == "Event 6"
 
 
 @pytest.mark.asyncio

@@ -17,6 +17,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **LLM output models**: `ClassificationOutput` and `LocationEnrichmentOutput` Pydantic models in `domain/llm_output.py` for type-safe LLM responses.
 - **Content hash deduplication**: Events deduplicated by SHA-256 content hash with normalization (whitespace, case, datetime). Upsert on `source_url` conflict.
 - **Event detail view**: Full event detail page with LLM response section, confidence progress bar, publish button for approved events.
+- **Ingestion runtime guardrails**: Added configurable Prefect timeouts to prevent indefinitely running ingestion jobs (`prefect_ingest_flow_timeout_seconds`, `prefect_fetch_source_task_timeout_seconds`).
+- **RSS recency cap**: RSS adapter now processes only the most recent 30 feed items by default (`rss_max_results`) before normalization to reduce backlog and LLM load.
+- **Ingestion observability logs**: Added detailed phase logs and timings (fetch, parse/select RSS, dedup preload, LLM infra boot, execute, persist, commit) plus traceback logging for fetch/normalize/task exceptions.
 
 ### Fixed
 

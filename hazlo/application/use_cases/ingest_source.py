@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -87,16 +88,23 @@ class IngestSource:
         await self._emit("source_loaded", "info", msg=f"Source: {source.name}", type=source.source_type.value)
         await self._emit("fetch_start", "info", msg=f"Connecting to {source.url or 'IMAP'}...")
 
+        fetch_t0 = time.monotonic()
         try:
             raw_events = await adapter.fetch(source)
         except Exception as exc:
+            logger.exception("Fetch failed for source=%s (%s)", source.name, source.id)
             await self._emit("fetch_error", "error", msg=f"Error fetching data: {exc}")
             result.errors.append(f"Fetch failed: {exc}")
             result.finished_at = datetime.now(UTC)
             return result
 
         result.events_found = len(raw_events)
-        await self._emit("fetch_done", "success", msg=f"{len(raw_events)} events found in feed")
+        await self._emit(
+            "fetch_done",
+            "success",
+            msg=f"{len(raw_events)} events found in feed",
+            duration_ms=int((time.monotonic() - fetch_t0) * 1000),
+        )
 
         content_hashes = await self._load_existing_content_hashes(raw_events)
 
@@ -113,6 +121,11 @@ class IngestSource:
                 event = await adapter.normalize(raw)
             except Exception as exc:
                 normalize_fail += 1
+                logger.exception(
+                    "Normalize failed source=%s title=%s",
+                    source.id,
+                    raw.get("title", "unknown"),
+                )
                 await self._emit(
                     "normalize",
                     "error",
@@ -275,6 +288,23 @@ class IngestSource:
         return result
 
     async def _emit(self, step: str, level: str, **data: object) -> None:
+        msg = str(data.get("msg", ""))
+        payload = {k: v for k, v in data.items() if k != "msg"}
+        extra = " ".join(f"{k}={v}" for k, v in payload.items() if v not in (None, ""))
+        line = f"[{step}] {msg}" if msg else f"[{step}]"
+        if extra:
+            line = f"{line} | {extra}"
+
+        match level:
+            case "error":
+                logger.error(line)
+            case "warning":
+                logger.warning(line)
+            case "success" | "summary":
+                logger.info(line)
+            case _:
+                logger.info(line)
+
         if self._event_queue is not None:
             await self._event_queue.put({"step": step, "level": level, **data})
 

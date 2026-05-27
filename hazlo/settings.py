@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     llm_circuit_breaker_failure_threshold: int = 3
     llm_circuit_breaker_reset_timeout_seconds: float = 60.0
     prefect_server_analytics_enabled: bool = True
+    prefect_ingest_flow_timeout_seconds: int = 1500
+    prefect_fetch_source_task_timeout_seconds: int = 1200
+    rss_max_results: int = 30
 
 
 @lru_cache

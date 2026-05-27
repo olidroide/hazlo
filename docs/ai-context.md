@@ -237,7 +237,17 @@ mise run prefect-worker   # Prefect worker
 mise run deploy-flows     # Deploy Prefect flows
 ```
 
-## Python Conventions
+## Ingestion Guardrails
+
+- Prefect ingestion has runtime limits to avoid stuck runs piling up:
+    - `prefect_ingest_flow_timeout_seconds` (default: `1500`)
+    - `prefect_fetch_source_task_timeout_seconds` (default: `1200`)
+- RSS ingestion applies an early recency cap before normalization/LLM stages:
+    - `rss_max_results` (default: `30` most recent services)
+- Ingestion emits detailed runtime logs for debugging:
+  - step-level events (`source_loaded`, `fetch_start`, `fetch_done`, `normalize`, `llm_*`, `complete`)
+  - phase timings for task orchestration (dedup preload, LLM infra setup, execute, persist, commit)
+  - stack traces for fetch/normalize and gathered task exceptions
 
 - **Line length**: 120
 - **Formatter**: Ruff (isort-compatible import sorting)

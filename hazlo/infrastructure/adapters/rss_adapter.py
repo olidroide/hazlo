@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import html
+import logging
 import re
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from xml.etree import ElementTree
+from xml.etree.ElementTree import Element
 
 import httpx
 
@@ -57,6 +60,8 @@ _ES_DATE_RANGE = re.compile(
     re.IGNORECASE,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _clean_text(text: str) -> str:
     return _TAG_RE.sub("", html.unescape(text)).strip()
@@ -65,15 +70,35 @@ def _clean_text(text: str) -> str:
 class RssSourceAdapter(BaseSourceAdapter):
     async def fetch(self, source: Source) -> list[dict]:
         if not source.url:
+            logger.warning("RSS source %s has no URL", source.id)
             return []
 
         verify = get_settings().verify_ssl
+        t0 = time.monotonic()
         async with httpx.AsyncClient(timeout=30.0, verify=verify) as client:
             resp = await client.get(source.url)
             resp.raise_for_status()
+        logger.info(
+            "RSS fetched source=%s status=%d bytes=%d in %.1fms",
+            source.id,
+            resp.status_code,
+            len(resp.text),
+            (time.monotonic() - t0) * 1000,
+        )
 
+        parse_t0 = time.monotonic()
         root = ElementTree.fromstring(resp.text)  # noqa: S314
-        services = root.findall(".//service")
+        all_services = root.findall(".//service")
+        max_results = max(get_settings().rss_max_results, 1)
+        services = _select_recent_services(all_services, max_results)
+        logger.info(
+            "RSS services selected source=%s total=%d selected=%d max_results=%d parse_ms=%.1f",
+            source.id,
+            len(all_services),
+            len(services),
+            max_results,
+            (time.monotonic() - parse_t0) * 1000,
+        )
 
         results = []
         for service in services:
@@ -224,6 +249,36 @@ class RssSourceAdapter(BaseSourceAdapter):
             source_url=raw["source_url"],
             extracted_at=datetime.now(UTC),
         )
+
+
+def _select_recent_services(services: list[Element], max_results: int) -> list[Element]:
+    if len(services) <= max_results:
+        return services
+
+    return sorted(services, key=_service_sort_key, reverse=True)[:max_results]
+
+
+def _service_sort_key(service: Element) -> datetime:
+    extra = service.find("extradata")
+    if extra is not None:
+        dates_elem = extra.find("fechas")
+        if dates_elem is not None:
+            range_elem = dates_elem.find("rango")
+            if range_elem is not None:
+                start_elem = range_elem.find("inicio")
+                if start_elem is not None and start_elem.text:
+                    parsed = _try_parse_date(start_elem.text.strip())
+                    if parsed is not None:
+                        return parsed
+
+    updated_at = service.get("fechaActualizacion")
+    if updated_at:
+        try:
+            return datetime.strptime(updated_at, "%Y-%m-%d")
+        except ValueError:
+            pass
+
+    return datetime.min
 
 
 def _parse_dates(start_date: str | None, end_date: str | None, schedule: str | None) -> tuple[str | None, str | None]:
