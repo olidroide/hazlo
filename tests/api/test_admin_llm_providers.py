@@ -418,3 +418,52 @@ async def test_new_provider_form_has_groq_in_dropdown() -> None:
     assert response.status_code == 200
     assert "Groq" in response.text
     assert 'value="groq"' in response.text
+
+
+@pytest.mark.asyncio
+async def test_toggle_provider_updates_correct_row_with_htmx() -> None:
+    """TDD Test: Verify toggle updates the CORRECT provider row, not the first row.
+
+    This test verifies that:
+    1. Checkbox has correct hx-target (provider-row-ID)
+    2. Checkbox is disabled during request (hx-disabled-elt)
+    3. Loading indicator is present (hx-indicator)
+    4. Response contains the correct row ID in the HTML
+    """
+    provider2 = _make_provider_model(id=uuid.uuid4(), name="Provider 2", is_active=False)
+
+    toggled_provider2 = _make_provider_model(
+        id=provider2.id, name="Provider 2", is_active=True
+    )
+
+    mock_repo = MagicMock(spec=LLMProviderRepository)
+    mock_repo.toggle_active = AsyncMock(return_value=toggled_provider2)
+
+    _set_provider_repo_override(mock_repo)
+    try:
+        async with _client() as client:
+            response = await client.post(
+                f"/admin/llm-providers/{provider2.id}/toggle-active"
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+
+    # ✅ Verify response is the CORRECT row with provider2's ID
+    assert f'id="provider-row-{provider2.id}"' in response.text
+    assert "Provider 2" in response.text
+    assert "checked" in response.text  # is_active=True
+
+    # ✅ Verify HTMX attributes are present in the checkbox
+    assert f'hx-target="#provider-row-{provider2.id}"' in response.text
+    assert 'hx-disabled-elt="this"' in response.text
+    assert f'hx-indicator="#loading-{provider2.id}"' in response.text
+
+    # ✅ Verify loading indicator div exists
+    assert f'id="loading-{provider2.id}"' in response.text
+    assert 'animate-spin' in response.text
+
+    # ✅ Verify response headers guide HTMX (if retargeting is needed)
+    assert response.headers.get("HX-Retarget") == f"#provider-row-{provider2.id}"
+    assert response.headers.get("HX-Reswap") == "outerHTML"

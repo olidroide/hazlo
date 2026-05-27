@@ -77,9 +77,7 @@ async def build_llm_infrastructure(
 
     # Fetch all active providers, sorted by priority
     result = await session.execute(
-        select(LLMProviderModel)
-        .where(LLMProviderModel.is_active)
-        .order_by(LLMProviderModel.priority)
+        select(LLMProviderModel).where(LLMProviderModel.is_active).order_by(LLMProviderModel.priority)
     )
     active_providers = list(result.scalars().all())
 
