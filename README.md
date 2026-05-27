@@ -49,7 +49,7 @@ and human editorial judgment.
 - **LLM provider management** — Configure Gemini and OpenRouter providers with admin UI
 - **Circuit breaker** — Fault-tolerant LLM calls with automatic fallback across providers
 - **Full traceability** — Track extraction origin, timestamps, and manual review changes
-- **Scheduled ingestion** — Prefect-powered flows running every 30 minutes
+- **Scheduled ingestion** — Prefect-powered per-source deployments using each source capture interval
 - **SSE test integration** — Real-time log streaming for source pipeline testing
 
 ## Architecture
@@ -158,6 +158,7 @@ Each event is normalized to a common model:
 | `POST` | `/admin/sources` | Create a new source |
 | `GET` | `/admin/sources/{id}` | Source detail + health + history |
 | `PATCH` | `/admin/sources/{id}/toggle` | Activate/deactivate source |
+| `DELETE` | `/admin/sources/{id}` | Delete source and remove its Prefect deployment |
 | `POST` | `/admin/sources/{id}/run-now` | Trigger on-demand extraction |
 | `POST` | `/admin/sources/{id}/test-connection` | Test source connectivity |
 | `POST` | `/admin/sources/{id}/preview` | Preview parsed events |
@@ -253,6 +254,8 @@ with `HAZLO_SECRET_KEY`. The circuit breaker automatically opens after
    | `HAZLO_SECRET_KEY` | — | Fernet key for encrypting LLM API keys (required) |
    | `ADMIN_USER` / `ADMIN_PASSWORD` | `admin` / — | Basic auth credentials for admin panel |
    | `AUTO_APPROVE_THRESHOLD` | `0.95` | Confidence threshold for auto-approval |
+   | `PREFECT_API_URL` | `http://localhost:4200/api` | Prefect API URL used by app + worker |
+   | `PREFECT_WORK_POOL_NAME` | `local-pool` | Prefect work pool for source deployments |
    | `VERIFY_SSL` | `true` | SSL verification for outbound HTTP requests |
    | `CA_BUNDLE` | — | Path to corporate CA bundle (behind proxy) |
    | `HAZLO_AUTO_MIGRATE` | `1` | Run Alembic migrations on startup (set `0` to disable) |
@@ -264,8 +267,8 @@ with `HAZLO_SECRET_KEY`. The circuit breaker automatically opens after
    ```
 
    On startup, the hazlo container auto-runs database migrations. The
-   prefect-worker container creates the `local-pool` work pool and deploys
-   two flows: `every-30-minutes` (scheduled) and `manual-trigger` (on-demand).
+   prefect-worker container creates the `local-pool` work pool, removes legacy
+   global deployments, and reconciles one Prefect deployment per source.
 
 5. **Start the server**
 
@@ -308,8 +311,7 @@ All services auto-configure:
 
 | Flow | Schedule | Description |
 |------|----------|-------------|
-| `ingest-all-sources` | Every 30 min | Ingest from all active sources |
-| `ingest-single-source` | Manual trigger | Ingest from a specific source by ID |
+| `ingest-single-source` | Per source (`fetch_interval_minutes`) | Ingest from one source deployment (`source-{source_id}`) |
 
 ## Developer Workflow
 
@@ -440,9 +442,9 @@ We welcome contributions! Please read the [Contributing Guide](CONTRIBUTING.md) 
 
 hatchling requires `README.md` in the build context. Ensure `.dockerignore` has `!README.md` to un-exclude it.
 
-### Prefect flows not found by worker
+### Prefect schedules look wrong for a source
 
-Deployments may have stale entrypoints. Re-run `docker compose up -d` to trigger `prefect_init.py`, which deletes old deployments and re-creates them with correct module-path entrypoints.
+Per-source schedules are reconciled by `docker/prefect_init.py` at worker start. Re-run `docker compose up -d` to trigger reconciliation if the deployment interval in Prefect does not match `fetch_interval_minutes`.
 
 ### Database connection errors in Docker
 

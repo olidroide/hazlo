@@ -30,6 +30,8 @@ services:
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-hazlo-secret}
       HAZLO_SECRET_KEY: ${HAZLO_SECRET_KEY:-change-me-in-production}
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_WORK_POOL_NAME: local-pool
     ports:
       - "${APP_HOST_PORT:-8000}:8000"
     restart: unless-stopped

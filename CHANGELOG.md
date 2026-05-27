@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Per-source Prefect deployment manager**: Added `source_deployment_manager.py` to reconcile one deployment per source (`source-{source_id}`), update interval schedules from `fetch_interval_minutes`, pause deployments when sources are inactive, delete deployments when sources are removed, and trigger `run-now` flow runs through Prefect API.
+- **Source delete endpoint**: Added `DELETE /admin/sources/{id}` and UI action to remove a source and its Prefect deployment.
+
 - **Pydantic AI integration (Phase 3 complete)**: Removed all legacy LLM infrastructure. Deleted `GeminiProvider`, `OpenRouterProvider`, `LLMProvider` ABC, `LLMClient`, `QualityClassifier`, and `LLMEnrichmentService` (~650 LOC). Admin routes now use pydantic-ai providers directly for `test_connection` and `list_models`. All LLM operations now use pydantic-ai agents with structured output.
 - **Pydantic AI integration (Phase 2 complete)**: All production call sites now use pydantic-ai agents. `QualityClassifierAgent` and `LocationEnrichmentAgent` replace legacy `QualityClassifier` and `LLMEnrichmentService` in `flows.py` and `ingest_source.py`. Tests updated to use `FunctionModel` for mocking structured output. Legacy classes marked as deprecated.
 - **Pydantic AI integration (Phase 1)**: Migrated LLM classification and location enrichment to pydantic-ai 1.102.0. `QualityClassifierAgent` and `LocationEnrichmentAgent` use structured output (`output_type`) with automatic validation and retries. `FallbackModel` handles provider failover (Gemini → OpenRouter). Legacy `LLMClient`/providers kept for admin routes.
@@ -23,6 +26,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Scheduler contract mismatch**: Replaced legacy global `every-30-minutes`/`manual-trigger` deployment model with per-source reconciliation, so Prefect schedule now matches source capture interval configured in admin.
+- **Run-now visibility**: `POST /admin/sources/{id}/run-now` now creates a Prefect flow run instead of executing ingestion inline, making on-demand executions visible in Prefect UI.
+
+- **LLM active provider lookup**: `LLMProviderRepository.get_active()` no longer assumes a single active row. It now returns the active provider with the lowest `priority` (deterministic primary) so multiple active providers can coexist for fallback chains without `MultipleResultsFound` crashes.
 - **HTMX boosted navigation**: Preserved admin shell (header/nav) during internal navigation by targeting boosted swaps to `#main-content` in `base.html` (`hx-target` + `hx-swap="innerHTML"`). Combined with dynamic base template selection (`base.html` vs `base_htmx.html`), hard refresh stays full-page while internal navigation updates only section content.
 - **Sources detail navigation**: Hardened source detail links to use explicit HTMX container swaps (`hx-get` + `hx-target="#main-content"` + `hx-push-url="true"`) instead of inherited boost only, preventing header loss on `/admin/sources/{id}` transitions.
 - **Admin navigation redirects**: Normalized admin links to canonical trailing-slash routes (`/admin/sources/`, `/admin/events/?status=...`, `/admin/llm-providers/`) to avoid extra `307 Temporary Redirect` round-trips.

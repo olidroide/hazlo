@@ -259,6 +259,23 @@ class SourceRepository:
             for r in runs
         ]
 
+    async def delete(self, source_id: uuid.UUID) -> bool:
+        result = await self._session.execute(select(SourceModel).where(SourceModel.id == source_id))
+        model = result.scalar_one_or_none()
+        if model is None:
+            return False
+
+        await self._session.execute(update(EventModel).where(EventModel.source_id == source_id).values(source_id=None))
+        run_result = await self._session.execute(
+            select(ExtractionRunModel).where(ExtractionRunModel.source_id == source_id)
+        )
+        for run in run_result.scalars().all():
+            await self._session.delete(run)
+
+        await self._session.delete(model)
+        await self._session.commit()
+        return True
+
 
 class ReviewRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -291,7 +308,14 @@ class LLMProviderRepository:
         return list(result.scalars().all())
 
     async def get_active(self) -> LLMProviderModel | None:
-        result = await self._session.execute(select(LLMProviderModel).where(LLMProviderModel.is_active))
+        # Multiple providers may be active for fallback chains. Return the primary
+        # one deterministically (lowest priority value first).
+        result = await self._session.execute(
+            select(LLMProviderModel)
+            .where(LLMProviderModel.is_active)
+            .order_by(LLMProviderModel.priority.asc(), LLMProviderModel.created_at.asc())
+            .limit(1)
+        )
         return result.scalar_one_or_none()
 
     async def save(self, provider: LLMProviderModel) -> LLMProviderModel:

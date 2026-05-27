@@ -1,40 +1,26 @@
 from __future__ import annotations
 
-from datetime import timedelta
-from pathlib import Path
+import asyncio
 
-from prefect.schedules import Interval
+from hazlo.infrastructure.db.repositories import SourceRepository
+from hazlo.infrastructure.db.session import async_session_factory
+from hazlo.infrastructure.prefect.source_deployment_manager import SourceDeploymentManager
 
-from hazlo.infrastructure.prefect.flows import (
-    ingest_all_sources_flow,
-    ingest_single_source_flow,
-)
 
-_FLOWS_DIR = str(Path(__file__).resolve().parent)
+async def _reconcile() -> None:
+    manager = SourceDeploymentManager()
+    await manager.cleanup_legacy_deployments()
 
-_MODULE_INGEST_ALL = "hazlo.infrastructure.prefect.flows.ingest_all_sources_flow"
-_MODULE_INGEST_SINGLE = "hazlo.infrastructure.prefect.flows.ingest_single_source_flow"
+    async with async_session_factory() as session:
+        source_repo = SourceRepository(session)
+        sources = await source_repo.list_all()
+
+    for source in sources:
+        await manager.sync_source(source)
 
 
 def main() -> None:
-    schedule = Interval(timedelta(minutes=30))
-
-    ingest_all_sources_flow.from_source(
-        source=_FLOWS_DIR,
-        entrypoint=_MODULE_INGEST_ALL,
-    ).deploy(  # ty: ignore
-        name="every-30-minutes",
-        schedule=schedule,
-        work_pool_name="local-pool",
-    )
-
-    ingest_single_source_flow.from_source(
-        source=_FLOWS_DIR,
-        entrypoint=_MODULE_INGEST_SINGLE,
-    ).deploy(  # ty: ignore
-        name="manual-trigger",
-        work_pool_name="local-pool",
-    )
+    asyncio.run(_reconcile())
 
 
 if __name__ == "__main__":

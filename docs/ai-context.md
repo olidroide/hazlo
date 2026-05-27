@@ -152,6 +152,8 @@ See `docs/agentic-system.md` → "LLM Evaluation" section.
 
 **Pydantic AI** (adopted, Phase 3 complete — legacy removed): All production call sites use pydantic-ai agents. `QualityClassifierAgent` and `LocationEnrichmentAgent` use pydantic-ai 1.102.0 with structured output (`output_type`), automatic retries, exception handling (returns fallback on failure), and `FallbackModel` for provider failover. Legacy `LLMClient`/`GeminiProvider`/`OpenRouterProvider`/`QualityClassifier`/`LLMEnrichmentService` removed (~650 LOC). Admin routes use pydantic-ai providers directly. `_build_llm_infrastructure()` in `flows.py` creates pydantic-ai `GoogleModel`/`OpenRouterModel` + `FallbackModel`. Tests use `FunctionModel` to mock structured output responses.
 
+**Active provider selection contract**: Multiple LLM providers may be active simultaneously for fallback chains. When a single "primary" active provider is required, repository lookups must be deterministic by `priority` (lowest value first), not `scalar_one_or_none()` over all active rows.
+
 ## HTTP Routes
 
 | Method | Path | Handler | Returns |
@@ -161,6 +163,8 @@ See `docs/agentic-system.md` → "LLM Evaluation" section.
 | POST | `/admin/sources/` | `create_source` | HTML row (HTMX) |
 | GET | `/admin/sources/{id}` | `get_source` | HTML detail |
 | PATCH | `/admin/sources/{id}/toggle` | `toggle_source` | HTML row (HTMX) |
+| POST | `/admin/sources/{id}/run-now` | `run_source_now` | HTML row (HTMX), triggers Prefect flow run |
+| DELETE | `/admin/sources/{id}` | `delete_source` | Empty 200, deletes source + Prefect deployment |
 | GET | `/admin/events/` | `list_events` | HTML event list (`?status=`) |
 | GET | `/admin/events/{id}` | `get_event` | HTML event card |
 | PATCH | `/admin/events/{id}/review` | `review_event` | HTML event card |
@@ -309,10 +313,15 @@ Emergency bypass: `git commit --no-verify` (requires justification in commit mes
 
 | Flow | Schedule | File |
 |------|----------|------|
-| `ingest-all-sources` | Every 30 min | `infrastructure/prefect/flows.py` |
-| `ingest-single-source` | Manual | `infrastructure/prefect/flows.py` |
+| `ingest-single-source` | Per source (`fetch_interval_minutes`) | `infrastructure/prefect/flows.py` |
 
-Deployment config: `docker/prefect_init.py`
+Deployment reconciliation: `docker/prefect_init.py` + `infrastructure/prefect/source_deployment_manager.py`
+
+Deployment naming convention:
+- `source-{source_id}` for each source
+- source active: deployment unpaused with source interval
+- source inactive: deployment paused
+- source deleted: deployment deleted
 
 Flows orchestrate use cases. Never put business logic in Prefect flows.
 
@@ -350,6 +359,8 @@ await client.create_deployment(
 | `HAZLO_SECRET_KEY` | `""` | Fernet key for encrypting API keys |
 | `LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | `3` | Consecutive failures to open circuit |
 | `LLM_CIRCUIT_BREAKER_RESET_TIMEOUT_SECONDS` | `60.0` | Seconds before HALF_OPEN attempt |
+| `PREFECT_API_URL` | `http://localhost:4200/api` | Prefect API base URL for app + worker reconciliation |
+| `PREFECT_WORK_POOL_NAME` | `local-pool` | Prefect work pool for per-source deployments |
 
 Settings class: `hazlo/settings.py` (Pydantic BaseSettings).
 

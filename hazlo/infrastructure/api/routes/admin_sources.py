@@ -9,9 +9,11 @@ from collections.abc import AsyncIterable
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
+from starlette.responses import Response
 
 from hazlo.infrastructure.api.deps import get_base, get_source_repo
 from hazlo.infrastructure.db.repositories import SourceRepository
+from hazlo.infrastructure.prefect.source_deployment_manager import SourceDeploymentManager
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,21 @@ def _source_dict(source) -> dict:
         "last_run_at": source.last_run_at,
         "last_run_status": source.last_run_status,
     }
+
+
+async def _sync_source_deployment(source) -> None:
+    manager = SourceDeploymentManager()
+    await manager.sync_source(source)
+
+
+async def _delete_source_deployment(source_id: uuid.UUID) -> None:
+    manager = SourceDeploymentManager()
+    await manager.delete_source_deployment(str(source_id))
+
+
+async def _trigger_source_run(source) -> str:
+    manager = SourceDeploymentManager()
+    return await manager.trigger_run(source)
 
 
 @router.get("/")
@@ -88,6 +105,12 @@ async def create_source(
         fetch_interval_minutes=fetch_interval_minutes,
     )
     created = await source_repo.save(source)
+    try:
+        await _sync_source_deployment(created)
+    except Exception:
+        logger.exception("Failed to sync Prefect deployment after source creation: %s", created.id)
+        raise HTTPException(status_code=502, detail="Source created but deployment sync failed") from None
+
     return request.state.templates.TemplateResponse(
         request,
         "admin/sources/_row.html",
@@ -125,6 +148,12 @@ async def toggle_source(
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
 
+    try:
+        await _sync_source_deployment(source)
+    except Exception:
+        logger.exception("Failed to sync Prefect deployment after source toggle: %s", source_id)
+        raise HTTPException(status_code=502, detail="Source status changed but deployment sync failed") from None
+
     return request.state.templates.TemplateResponse(
         request,
         "admin/sources/_row.html",
@@ -142,27 +171,13 @@ async def run_source_now(
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
 
-    async def _run_and_update() -> None:
-        from hazlo.infrastructure.db.repositories import SourceRepository as Repo
-        from hazlo.infrastructure.db.session import async_session_factory
+    try:
+        flow_run_id = await _trigger_source_run(source)
+    except Exception:
+        logger.exception("Run-now trigger failed for source %s", source_id)
+        raise HTTPException(status_code=502, detail="Failed to trigger source run in Prefect") from None
 
-        try:
-            from hazlo.infrastructure.prefect.flows import ingest_single_source_flow
-
-            await ingest_single_source_flow(str(source_id))
-            status = "success"
-        except Exception:
-            logger.exception("Run-now failed for source %s", source_id)
-            status = "error"
-
-        async with async_session_factory() as session:
-            repo = Repo(session)
-            s = await repo.get(source_id)
-            if s is not None:
-                s.last_run_status = status
-                await repo.save(s)
-
-    _ = asyncio.create_task(_run_and_update())  # noqa: RUF006
+    logger.info("Run-now triggered via Prefect for source=%s flow_run=%s", source_id, flow_run_id)
 
     source_dict = _source_dict(source)
     source_dict["last_run_status"] = "running"
@@ -171,6 +186,23 @@ async def run_source_now(
         "admin/sources/_row.html",
         {"source": source_dict},
     )
+
+
+@router.delete("/{source_id}")
+async def delete_source(
+    source_id: uuid.UUID,
+    source_repo: SourceRepository = Depends(get_source_repo),
+):
+    try:
+        await _delete_source_deployment(source_id)
+    except Exception:
+        logger.exception("Failed to delete Prefect deployment for source=%s", source_id)
+        raise HTTPException(status_code=502, detail="Failed to delete source deployment") from None
+
+    success = await source_repo.delete(source_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return Response(content="", status_code=200)
 
 
 @router.post("/{source_id}/test-connection")

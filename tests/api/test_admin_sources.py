@@ -68,22 +68,53 @@ async def test_create_source_returns_partial_html() -> None:
     app.dependency_overrides[deps.get_source_repo] = lambda: mock_repo
     try:
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            response = await client.post(
-                "/admin/sources/",
-                data={
-                    "name": "New Source",
-                    "source_type": "rss",
-                    "url": "https://new.example.com",
-                    "fetch_interval_minutes": 30,
-                },
-                headers={"HX-Request": "true"},
-            )
+        with patch("hazlo.infrastructure.api.routes.admin_sources._sync_source_deployment", AsyncMock()):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.post(
+                    "/admin/sources/",
+                    data={
+                        "name": "New Source",
+                        "source_type": "rss",
+                        "url": "https://new.example.com",
+                        "fetch_interval_minutes": 30,
+                    },
+                    headers={"HX-Request": "true"},
+                )
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 200
     assert "Test Source" in response.text
     assert "source-" in response.text
+
+
+@pytest.mark.asyncio
+async def test_create_source_syncs_prefect_deployment() -> None:
+    source = _make_source(fetch_interval_minutes=90)
+    mock_repo = MagicMock()
+    mock_repo.save = AsyncMock(return_value=source)
+
+    sync_mock = AsyncMock()
+
+    app.dependency_overrides[deps.get_source_repo] = lambda: mock_repo
+    try:
+        transport = ASGITransport(app=app)
+        with patch("hazlo.infrastructure.api.routes.admin_sources._sync_source_deployment", sync_mock):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.post(
+                    "/admin/sources/",
+                    data={
+                        "name": "New Source",
+                        "source_type": "rss",
+                        "url": "https://new.example.com",
+                        "fetch_interval_minutes": 90,
+                    },
+                    headers={"HX-Request": "true"},
+                )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    sync_mock.assert_awaited_once_with(source)
 
 
 @pytest.mark.asyncio
@@ -95,15 +126,90 @@ async def test_toggle_source_updates_status() -> None:
     app.dependency_overrides[deps.get_source_repo] = lambda: mock_repo
     try:
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            response = await client.patch(
-                f"/admin/sources/{source.id}/toggle",
-                headers={"HX-Request": "true"},
-            )
+        with patch("hazlo.infrastructure.api.routes.admin_sources._sync_source_deployment", AsyncMock()):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.patch(
+                    f"/admin/sources/{source.id}/toggle",
+                    headers={"HX-Request": "true"},
+                )
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 200
     assert "Inactiva" in response.text
+
+
+@pytest.mark.asyncio
+async def test_toggle_source_syncs_prefect_deployment_state() -> None:
+    source = _make_source(is_active=False, fetch_interval_minutes=90)
+    mock_repo = MagicMock()
+    mock_repo.toggle_active = AsyncMock(return_value=source)
+
+    sync_mock = AsyncMock()
+
+    app.dependency_overrides[deps.get_source_repo] = lambda: mock_repo
+    try:
+        transport = ASGITransport(app=app)
+        with patch("hazlo.infrastructure.api.routes.admin_sources._sync_source_deployment", sync_mock):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.patch(
+                    f"/admin/sources/{source.id}/toggle",
+                    headers={"HX-Request": "true"},
+                )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    sync_mock.assert_awaited_once_with(source)
+
+
+@pytest.mark.asyncio
+async def test_run_source_now_triggers_prefect_flow_run() -> None:
+    source = _make_source()
+    mock_repo = MagicMock()
+    mock_repo.get = AsyncMock(return_value=source)
+
+    trigger_mock = AsyncMock(return_value="run-id-123")
+
+    app.dependency_overrides[deps.get_source_repo] = lambda: mock_repo
+    try:
+        transport = ASGITransport(app=app)
+        with patch("hazlo.infrastructure.api.routes.admin_sources._trigger_source_run", trigger_mock):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.post(
+                    f"/admin/sources/{source.id}/run-now",
+                    headers={"HX-Request": "true"},
+                )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert "Ejecutando" in response.text
+    trigger_mock.assert_awaited_once_with(source)
+
+
+@pytest.mark.asyncio
+async def test_delete_source_deletes_prefect_deployment_first() -> None:
+    source_id = uuid.uuid4()
+    mock_repo = MagicMock()
+    mock_repo.delete = AsyncMock(return_value=True)
+
+    delete_mock = AsyncMock()
+
+    app.dependency_overrides[deps.get_source_repo] = lambda: mock_repo
+    try:
+        transport = ASGITransport(app=app)
+        with patch("hazlo.infrastructure.api.routes.admin_sources._delete_source_deployment", delete_mock):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.delete(
+                    f"/admin/sources/{source_id}",
+                    headers={"HX-Request": "true"},
+                )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    delete_mock.assert_awaited_once_with(source_id)
+    mock_repo.delete.assert_awaited_once_with(source_id)
 
 
 # ---------------------------------------------------------------------------
