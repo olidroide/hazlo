@@ -35,7 +35,13 @@ services:
     restart: unless-stopped
     command: fastapi run hazlo/main.py --port 8000 --host 0.0.0.0
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs', timeout=2)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)",
+        ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -73,7 +79,13 @@ services:
       - "${PREFECT_HOST_PORT:-4200}:4200"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:4200/api/health', timeout=1)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request as u; u.urlopen('http://localhost:4200/api/health', timeout=1)",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3

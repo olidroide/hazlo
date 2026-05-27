@@ -11,7 +11,7 @@ from typing import Any, cast
 import structlog
 from alembic.config import Config
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -128,6 +128,11 @@ cast(dict[str, Any], templates.env.globals)["static_url"] = lambda path: f"/stat
 
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+
+@app.get("/health", include_in_schema=False)
+async def health() -> JSONResponse:
+    return JSONResponse({"status": "ok"})
 
 
 @app.get("/")

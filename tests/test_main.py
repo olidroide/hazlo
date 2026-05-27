@@ -10,3 +10,10 @@ def test_root_returns_200() -> None:
     response = client.get("/")
     assert response.status_code == 200
     assert "Hazlo" in response.text
+
+
+def test_health_returns_ok() -> None:
+    client = TestClient(app)
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
