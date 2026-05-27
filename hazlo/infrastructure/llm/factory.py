@@ -39,13 +39,27 @@ async def build_pydantic_model(provider, api_key: str) -> Model | None:
     return None
 
 
+def _supports_tool_calling(provider_type: str, model: str) -> bool:
+    """Check if a model supports tool calling (for structured output)."""
+    # Models known to NOT support tool calling
+    no_tools = {
+        ("groq", "groq/compound-mini"),
+    }
+    return (provider_type, model) not in no_tools
+
+
 async def build_llm_infrastructure(
     session: AsyncSession,
 ) -> tuple[QualityClassifierAgent | None, ReviewEngine, LocationEnrichmentAgent | None, DateParserAgent | None]:
     """Build QualityClassifierAgent + ReviewEngine + LocationEnrichmentAgent + DateParserAgent.
 
     Returns (None, ReviewEngine, None, None) if no active LLM provider is configured.
+
+    Strategy: Use active provider first, then cascade through ALL other providers
+    (sorted by priority) as fallbacks. This maximizes availability and handles rate limits gracefully.
     """
+    import logging
+
     from pydantic_ai.models.fallback import FallbackModel
     from sqlalchemy import select
 
@@ -58,12 +72,15 @@ async def build_llm_infrastructure(
     )
     from hazlo.settings import get_settings
 
+    logger = logging.getLogger(__name__)
     settings = get_settings()
 
+    # Fetch active provider
     result = await session.execute(select(LLMProviderModel).where(LLMProviderModel.is_active))
     active_provider = result.scalar_one_or_none()
 
     if active_provider is None:
+        logger.warning("No active LLM provider configured")
         return (
             None,
             ReviewEngine(auto_approve_threshold=settings.auto_approve_threshold),
@@ -72,6 +89,7 @@ async def build_llm_infrastructure(
         )
 
     if not settings.hazlo_secret_key:
+        logger.warning("No HAZLO_SECRET_KEY set, cannot decrypt provider credentials")
         return (
             None,
             ReviewEngine(auto_approve_threshold=settings.auto_approve_threshold),
@@ -80,32 +98,64 @@ async def build_llm_infrastructure(
         )
 
     models = []
+
+    # Primary model (active provider)
     api_key = decrypt_value(active_provider.api_key_encrypted, settings.hazlo_secret_key)
     model = await build_pydantic_model(active_provider, api_key)
     if model:
-        models.append(model)
+        logger.info("Loaded primary LLM: %s (%s)", active_provider.model, active_provider.provider_type)
+        models.append((model, active_provider.model, True))  # (model, name, supports_tools)
 
+    # Fallback models: ALL other providers sorted by tool support + priority
+    # Prioritize models that support tool calling (for structured output)
     result = await session.execute(
         select(LLMProviderModel)
-        .where(
-            LLMProviderModel.is_active.is_(False),
-            LLMProviderModel.id != active_provider.id,
-        )
+        .where(LLMProviderModel.id != active_provider.id)
         .order_by(LLMProviderModel.priority)
     )
     fallback_providers = result.scalars().all()
 
-    for fp in fallback_providers:
+    # Sort: tool-supporting first, then by priority
+    fallback_providers_sorted = sorted(
+        fallback_providers,
+        key=lambda p: (not _supports_tool_calling(p.provider_type, p.model), p.priority),
+    )
+
+    for fp in fallback_providers_sorted:
         fp_api_key = decrypt_value(fp.api_key_encrypted, settings.hazlo_secret_key)
         fp_model = await build_pydantic_model(fp, fp_api_key)
         if fp_model:
-            models.append(fp_model)
+            supports_tools = _supports_tool_calling(fp.provider_type, fp.model)
+            logger.info(
+                "Loaded fallback LLM (priority=%d, tools=%s): %s (%s)",
+                fp.priority,
+                supports_tools,
+                fp.model,
+                fp.provider_type,
+            )
+            models.append((fp_model, fp.model, supports_tools))
 
-    pydantic_model = models[0] if len(models) == 1 else FallbackModel(*models)
+    if not models:
+        logger.error("No LLM models could be built from providers")
+        return (
+            None,
+            ReviewEngine(auto_approve_threshold=settings.auto_approve_threshold),
+            None,
+            None,
+        )
 
-    classifier = QualityClassifierAgent(pydantic_model)
+    # Build pydantic model chain: extract just the model objects, sorted by tool support
+    model_objects = [m for m, _, _ in models]
+    pydantic_model = model_objects[0] if len(model_objects) == 1 else FallbackModel(*model_objects)
+    logger.info(
+        "LLM model chain ready: %d provider(s) [%s]",
+        len(model_objects),
+        " → ".join(name for _, name, _ in models),
+    )
+
+    classifier = QualityClassifierAgent(pydantic_model, retries=1 if len(model_objects) > 1 else 3)
     review_engine = ReviewEngine(auto_approve_threshold=settings.auto_approve_threshold)
-    llm_enrichment = LocationEnrichmentAgent(pydantic_model)
-    date_parser = DateParserAgent(pydantic_model)
+    llm_enrichment = LocationEnrichmentAgent(pydantic_model, retries=1 if len(model_objects) > 1 else 3)
+    date_parser = DateParserAgent(pydantic_model, retries=1 if len(model_objects) > 1 else 3)
 
     return classifier, review_engine, llm_enrichment, date_parser
