@@ -14,6 +14,18 @@ Follow DDD & Clean Architecture strictly:
 - `hazlo/application/` — Use Cases only. No SQLAlchemy, no FastAPI here.
 - `hazlo/infrastructure/` — Repositories, API routes, adapters.
 
+## NO OVER-ENGINEERING (MANDATORY)
+
+- **YAGNI**: Don't build it until it's needed. No abstractions for hypothetical future features.
+- **KISS**: Simple code > clever code. If a function is 5 lines, don't refactor it into 3 files.
+- **No premature optimization**: Don't add caching, async queues, or microservices patterns for 100 events/day.
+- **No interface for one implementation**: Don't create ABCs, Protocols, or factory patterns until there are 2+ real implementations.
+- **Delete > keep**: Dead code is technical debt. If it's not used in production, remove it.
+- **One file > three files**: If logic fits in one file comfortably, keep it there. Don't split for the sake of "clean architecture".
+- **Test what matters**: Don't test trivial getters/setters. Test behavior, edge cases, and integration points.
+- **No gold-plating**: "Good enough to ship" beats "perfect but never finished". Ship, measure, iterate.
+- **If you can't explain why in one sentence, don't add it.**
+
 ## Code Rules
 - Python 3.13+ only. Always use `match/case`, `async/await`, strict type hints.
 - Pydantic v2 for all input/output models. Use `model_config = ConfigDict(strict=True)`.
