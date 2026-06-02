@@ -3,7 +3,7 @@
 # Exceptions: __init__.py, templates/ (HTML), static/ (CSS).
 set -euo pipefail
 
-STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+STAGED=$(git diff --cached --name-only --diff-filter=ACMRD)
 
 SRC_CHANGES=()
 TEST_CHANGES=()

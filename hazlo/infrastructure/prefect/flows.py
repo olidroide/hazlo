@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-import traceback
 import uuid
 
 from prefect import flow, task
@@ -164,119 +163,6 @@ async def _save_extraction_run(session, source_id, result):
         errors="\n".join(result.errors) if result.errors else None,
     )
     session.add(run)
-
-
-@flow(
-    name="ingest-all-sources",
-    log_prints=True,
-    timeout_seconds=_settings.prefect_ingest_flow_timeout_seconds,
-)
-async def ingest_all_sources_flow() -> None:
-    import asyncio
-
-    from hazlo.infrastructure.db.repositories import SourceRepository
-    from hazlo.infrastructure.db.session import async_session_factory
-
-    logger = get_run_logger()
-    t0 = time.monotonic()
-
-    async with async_session_factory() as session:
-        source_repo = SourceRepository(session)
-        sources = await source_repo.list_all()
-        active_sources = [s for s in sources if s.is_active]
-
-    source_names = ", ".join(f"{s.name} ({s.source_type.value})" for s in active_sources)
-    logger.info("Found %d active sources: %s", len(active_sources), source_names)
-
-    results = await asyncio.gather(
-        *[fetch_source_task(str(s.id)) for s in active_sources],
-        return_exceptions=True,
-    )
-
-    total_found = 0
-    total_new = 0
-    total_skipped = 0
-    total_auto_approved = 0
-    total_flagged = 0
-    total_auto_rejected = 0
-    total_errors = 0
-    source_breakdown = []
-
-    for r in results:
-        if isinstance(r, Exception):
-            total_errors += 1
-            tb = "".join(traceback.format_exception(type(r), r, r.__traceback__))
-            logger.error("Source task failed with exception: %s\n%s", r, tb)
-            source_breakdown.append({"name": "UNKNOWN", "status": "FAILED", "error": str(r)})
-        elif isinstance(r, dict):
-            name = r.get("source_name", r.get("source_id", "unknown"))
-            found = r.get("events_found", 0)
-            new = r.get("events_new", 0)
-            skipped = r.get("events_skipped", 0)
-            approved = r.get("events_auto_approved", 0)
-            flagged = r.get("events_flagged", 0)
-            rejected = r.get("events_auto_rejected", 0)
-            errs = r.get("errors", [])
-            duration = r.get("duration_s", 0)
-
-            total_found += found
-            total_new += new
-            total_skipped += skipped
-            total_auto_approved += approved
-            total_flagged += flagged
-            total_auto_rejected += rejected
-            total_errors += len(errs)
-
-            status = "OK" if not errs else f"ERRORS({len(errs)})"
-            source_breakdown.append(
-                {
-                    "name": name,
-                    "found": found,
-                    "new": new,
-                    "skipped": skipped,
-                    "approved": approved,
-                    "flagged": flagged,
-                    "rejected": rejected,
-                    "errors": len(errs),
-                    "duration_s": duration,
-                    "status": status,
-                }
-            )
-
-    duration = time.monotonic() - t0
-
-    logger.info("=" * 80)
-    logger.info("INGESTION SUMMARY (%.1fs)", duration)
-    logger.info("=" * 80)
-    logger.info(
-        "TOTAL → found=%d new=%d skipped=%d approved=%d flagged=%d rejected=%d errors=%d",
-        total_found,
-        total_new,
-        total_skipped,
-        total_auto_approved,
-        total_flagged,
-        total_auto_rejected,
-        total_errors,
-    )
-    for sb in source_breakdown:
-        if sb.get("error"):
-            logger.error("  %-30s FAILED: %s", sb["name"], sb["error"])
-        else:
-            logger.info(
-                "  %-30s found=%-5d new=%-4d skipped=%-5d "
-                "approved=%-4d flagged=%-4d rejected=%-4d errors=%-3d (%.1fs) [%s]",
-                sb["name"],
-                sb["found"],
-                sb["new"],
-                sb["skipped"],
-                sb["approved"],
-                sb["flagged"],
-                sb["rejected"],
-                sb["errors"],
-                sb["duration_s"],
-                sb["status"],
-            )
-    logger.info("=" * 80)
 
 
 @flow(name="ingest-single-source")

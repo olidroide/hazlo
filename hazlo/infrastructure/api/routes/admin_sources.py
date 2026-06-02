@@ -420,12 +420,12 @@ async def test_integration_stream(
 
         icon_map = {"success": "✓", "error": "✗", "info": "·", "summary": "✓"}
         icon = icon_map.get(level, "\u00b7")
-        html = f'<div class="log-{level}"><span class="log-icon">{icon}</span> {msg}</div>'
+        entry_html = f'<div class="log-{level}"><span class="log-icon">{icon}</span> {msg}</div>'
         if raw_json:
             safe_json = raw_json.replace("<", "&lt;").replace(">", "&gt;")
-            html += f'<details class="log-details"><summary>Raw LLM</summary><pre>{safe_json}</pre></details>'
+            entry_html += f'<details class="log-details"><summary>Raw LLM</summary><pre>{safe_json}</pre></details>'
 
-        yield ServerSentEvent(event="log_entry", data=html)
+        yield ServerSentEvent(event="log_entry", data=entry_html)
 
 
 @router.get("/{source_id}/test/result")
