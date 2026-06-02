@@ -6,6 +6,10 @@ from hazlo.domain.event import Event
 from hazlo.domain.source import Source
 
 
+class AdapterNotImplementedError(Exception):
+    """Raised when a source adapter type is not yet implemented."""
+
+
 class BaseSourceAdapter(ABC):
     @abstractmethod
     async def fetch(self, source: Source) -> list[dict]:

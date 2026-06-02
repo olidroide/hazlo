@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from hazlo.domain.event import Event, Location, Price, TicketInfo
 from hazlo.domain.source import Source
-from hazlo.infrastructure.adapters.base import BaseSourceAdapter
+from hazlo.infrastructure.adapters.base import AdapterNotImplementedError, BaseSourceAdapter
 
 
 class EmailSourceAdapter(BaseSourceAdapter):
@@ -19,8 +19,8 @@ class EmailSourceAdapter(BaseSourceAdapter):
         if not all([imap_host, imap_user, imap_password]):
             raise ValueError("EmailSourceAdapter requires imap_host, imap_user, and imap_password in source.config")
 
-        raise NotImplementedError(
-            "EmailSourceAdapter not yet implemented. "
+        raise AdapterNotImplementedError(
+            "Email source connector not implemented. "
             "Implement IMAP connection (asyncio.to_thread + imaplib) and email body parsing."
         )
 

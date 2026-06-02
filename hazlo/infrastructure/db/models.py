@@ -80,7 +80,6 @@ class ExtractionRunModel(Base):
     events_flagged: Mapped[int] = mapped_column(Integer, default=0)
     events_auto_approved: Mapped[int] = mapped_column(Integer, default=0)
     events_auto_rejected: Mapped[int] = mapped_column(Integer, default=0)
-    snapshot: Mapped[str | None] = mapped_column(JSONB, nullable=True)
     errors: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 

@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from hazlo.domain.event import Event, Location, Price, TicketInfo
 from hazlo.domain.source import Source
-from hazlo.infrastructure.adapters.base import BaseSourceAdapter
+from hazlo.infrastructure.adapters.base import AdapterNotImplementedError, BaseSourceAdapter
 
 
 class WebSourceAdapter(BaseSourceAdapter):
@@ -14,8 +14,8 @@ class WebSourceAdapter(BaseSourceAdapter):
         if not source.url:
             return []
 
-        raise NotImplementedError(
-            "WebSourceAdapter not yet implemented. "
+        raise AdapterNotImplementedError(
+            "Web source connector not implemented. "
             "Configure selectors in source.config and implement httpx + justhtml parsing."
         )
 
