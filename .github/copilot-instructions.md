@@ -25,7 +25,7 @@ Always follow **DDD + Clean Architecture** with three layers:
 ```
 domain/          ← entities, value objects, business rules — no framework dependencies
 application/     ← use cases, ports, orchestration
-infrastructure/  ← repositories, DB adapters, HTTP API, connectors, Prefect, qcrawl
+infrastructure/  ← repositories, DB adapters, HTTP API, connectors, Prefect
 ```
 
 - Prefer composition over inheritance.
@@ -49,13 +49,11 @@ Always preserve the server-rendered shell and apply HTMX as progressive enhancem
 
 | Layer | Technology |
 |---|---|
-| Language | Python 3.12+ |
+| Language | Python 3.13+ |
 | API | FastAPI (latest stable) |
 | Validation | Pydantic v2 |
 | ORM | SQLAlchemy 2.x async |
 | Database | PostgreSQL with JSONB |
-| Crawling | qcrawl |
-| HTML parsing | justhtml |
 | Orchestration | Prefect OSS 3.x |
 | Frontend | HTMX + Jinja2 + Tailwind CSS |
 | Testing | pytest + Factory Boy + Testcontainers |
@@ -101,38 +99,36 @@ Follow modern Python 3.13 patterns at all times:
 
 ## Domain Model (Key Entities)
 
-- `Source` — a configurable, activatable/deactivatable ingestion source.
-- `IngestionRun` — a single execution of ingestion for one source.
-- `RawDocument` — raw content retrieved (HTML, XML, email, JSON).
-- `EventDraft` — normalised intermediate event representation pending review.
-- `Event` — reviewed and published event.
+- `Source` — configurable, activatable/deactivatable ingestion source.
+- `SourceType ∈ {RSS, WEB, EMAIL}` — type of ingestion source.
+- `Event` — cultural event with title, description, location, dates, pricing.
+- `EventStatus ∈ {PENDING, APPROVED, REJECTED, PUBLISHED}` — event lifecycle state.
+- `Review` — human review record with action and optional changes.
+- `ReviewAction ∈ {APPROVE, REJECT, EDIT}` — review decision.
 
-Data quality labels: `GOOD`, `SUSPECT`, `INVALID`.
-Source health states: `OK`, `DEGRADED`, `FAILING`.
+Value objects: `Location`, `Price`, `TicketInfo`, `IdempotencyKey`.
 
 ---
 
 ## Ingestion Connector Pattern
 
-Every connector must implement:
+Every connector extends `BaseSourceAdapter`:
 
 ```python
-fetch_raw_documents(source: Source) -> list[RawDocumentDTO]
-test_connection(source: Source) -> ConnectorHealth
+class BaseSourceAdapter(ABC):
+    async def fetch(self, source: Source) -> list[dict]: ...
+    async def normalize(self, raw: dict) -> Event: ...
 ```
 
-Source types: `WEB_STATIC`, `WEB_DYNAMIC`, `RSS`, `XML_FEED`, `EMAIL_NEWSLETTER`.
+Source types: `RSS | WEB | EMAIL`.
 
-Split connectors into three functions:
-- `fetch` — download raw content
-- `parse` — extract structured DTOs from raw content
-- `map_to_domain` — project DTOs to domain entities
+RSS adapter uses `httpx + xml.etree.ElementTree`. Web and Email adapters are stubs.
 
 ---
 
 ## Scheduling Defaults
 
-- Schedule `run_all_sources()` at least once per day at 12:00 (`0 12 * * *`).
+- Per-source `fetch_interval_minutes` controls ingestion cadence.
 - Prefer Prefect scheduler over system cron.
 - All schedules must be version-controlled as code.
 

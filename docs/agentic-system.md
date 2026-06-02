@@ -18,7 +18,7 @@ Hazlo's competitive advantage is **autonomous curation with human oversight**. T
 ┌─────────────────────────────────────────────────────────────────────┐
 │  1. ADAPTER (deterministic)                                         │
 │  Role: Fetch + parse source into raw event dicts                    │
-│  Technique: XML parse (RSS), justhtml (Web), IMAP (Email)           │
+│  Technique: XML parse (RSS). Web/Email adapters are stubs.              │
 │  LLM: NO                                                            │
 └──────────────────────────┬──────────────────────────────────────────┘
                            │ list[dict]
@@ -43,17 +43,31 @@ Hazlo's competitive advantage is **autonomous curation with human oversight**. T
 ┌─────────────────────────────────────────────────────────────────────┐
 │  4. DEDUP SERVICE (deterministic)                                   │
 │  Role: Detect duplicate events across sources                       │
-│  Technique: PostgreSQL pg_trgm similarity + date + venue match      │
+│  Technique: Pure-Python Jaccard token similarity + date match       │
 │  LLM: NO                                                            │
 └──────────────────────────┬──────────────────────────────────────────┘
                            │ unique events
                            ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  5. QUALITY CLASSIFIER (LLM — 1 call per event)                     │
+│  5. QUALITY CLASSIFIER (LLM — QualityClassifierAgent)               │
 │  Role: Classify is_children_activity, is_toddler_friendly,          │
 │        assign confidence_score based on completeness + quality      │
 │  Technique: LLM structured output (Pydantic)                        │
 │  LLM: YES — configurable provider (Gemini default, free tier)       │
+└──────────────────────────┬──────────────────────────────────────────┘
+                           │ scored event
+                           ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  6. LOCATION ENRICHMENT (LLM — LocationEnrichmentAgent)             │
+│  Role: Extract/normalize venue, metro, barrio from address          │
+│  LLM: YES                                                          │
+└──────────────────────────┬──────────────────────────────────────────┘
+                           │ enriched event
+                           ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  7. DATE PARSER (LLM — DateParserAgent)                             │
+│  Role: Parse ambiguous date/time strings to canonical format        │
+│  LLM: YES                                                          │
 └──────────────────────────┬──────────────────────────────────────────┘
                            │ scored event
                            ▼
@@ -85,11 +99,11 @@ Hazlo's competitive advantage is **autonomous curation with human oversight**. T
 |---|---|---|---|
 | Parser | Agent with auto-healing | Deterministic adapter | Regex/XML parse is reliable, no LLM needed |
 | Enrichment | LLM classification | Lookup tables + regex | Metro/barrio from address = dictionary lookup |
-| Dedup | Semantic embeddings | pg_trgm similarity | Trigram + date + venue = 95% accuracy, $0 cost |
-| Quality | LLM | **LLM (1 call)** | This is where LLM adds real value |
+| Dedup | Semantic embeddings | Jaccard token similarity | Pure-Python, no DB extension, 95% accuracy, $0 cost |
+| Quality | LLM | **LLM (3 agents)** | QualityClassifier + LocationEnrichment + DateParser |
 | Review | LLM decision | Rule engine | Rules are deterministic, auditable, free |
 
-**Result:** 1 LLM call per event instead of 3-5. Cost: ~$0/month with Gemini free tier.
+**Result:** 3 LLM agent calls per event (QualityClassifier, LocationEnrichment, DateParser). Cost: ~$0/month with Gemini free tier.
 
 ## LLM Provider Management
 
@@ -105,9 +119,9 @@ No vendor lock-in. Configure, test, and switch LLM providers from the admin pane
 ├──────────────────────────────────────────────────────────────┤
 │  Name              Model                      Status   Cost  │
 │  ─────────────────────────────────────────────────────────── │
-│  Gemini (default)  google/gemini-2.0-flash    Active   $0    │
-│  OpenRouter        google/gemini-2.0-flash    Inactive $0.10 │
-│  OpenAI            gpt-4o-mini                Inactive $0.15 │
+│  Gemini (default)  google/gemini-2.5-flash    Active   $0    │
+│  OpenRouter        google/gemini-2.5-flash    Inactive $0    │
+│  Groq              llama-3.3-70b-versatile    Inactive $0    │
 │                                                              │
 │  [Test Connection]  [Set Active]  [Edit]  [Delete]           │
 └──────────────────────────────────────────────────────────────┘
@@ -115,7 +129,7 @@ No vendor lock-in. Configure, test, and switch LLM providers from the admin pane
 
 Each provider stores:
 - `name` — display name
-- `provider_type` — `gemini` | `openrouter` | `openai` | `anthropic`
+- `provider_type` — `gemini` | `openrouter` | `groq`
 - `model` — model identifier
 - `api_key` — encrypted (Fernet)
 - `is_active` — only one active at a time
@@ -128,36 +142,31 @@ Each provider stores:
 1. Admin adds new provider in panel
 2. Clicks "Test Connection" → sends test prompt, validates response
 3. Sets as active → system uses new provider for next ingestion run
-4. If provider fails → automatic fallback to previous active provider
+4. pydantic-ai FallbackModel handles provider rotation on failure
 5. All switches logged in audit trail
 
 ### Cost Strategy
 
 | Provider | Model | Input ($/1M) | Output ($/1M) | Free Tier | Monthly Cost* |
 |---|---|---|---|---|---|
-| **Google Gemini** | **2.0 Flash** | **$0.10** | **$0.40** | **15 req/min** | **$0** |
+| **Google Gemini** | **2.5 Flash** | **$0** | **$0** | **15 req/min** | **$0** |
 | Google Gemini | 2.0 Flash Lite | $0.075 | $0.30 | 15 req/min | $0 |
-| OpenRouter | google/gemini-2.0-flash | $0.10 | $0.40 | No | $1.20 |
+| OpenRouter | google/gemini-2.5-flash | $0.0375 | $0.15 | No | $0.56 |
 | OpenRouter | meta-llama/llama-3.1-8b | $0.03 | $0.06 | No | $0.27 |
-| OpenAI | gpt-4o-mini | $0.15 | $0.60 | No | $1.80 |
-| Anthropic | claude-3.5-haiku | $0.80 | $4.00 | No | $10.80 |
+| Groq | llama-3.3-70b-versatile | $0.59 | $0.79 | 30 req/min | $0 |
 
 *Based on 3000 events/month, 2K input + 500 output tokens per event.
 
-**Default:** Google Gemini 2.0 Flash via direct API → free tier covers all ingestion needs.
+**Default:** Google Gemini 2.5 Flash via direct API → free tier covers all ingestion needs.
 
-**Fallback:** Configure OpenRouter as secondary provider from admin panel.
+**Fallback:** Configure OpenRouter or Groq as secondary provider from admin panel. pydantic-ai FallbackModel handles rotation.
 
 ### Configuration
 
 ```python
-# settings.py
-llm_provider: str = "gemini"  # gemini | openrouter | openai | anthropic
-gemini_api_key: str = ""  # Google AI Studio API key
-gemini_model: str = "gemini-2.0-flash"
-llm_timeout: int = 30  # seconds
-llm_max_retries: int = 2
+# settings.py — LLM config is via admin UI (DB), NOT env vars
 auto_approve_threshold: float = 0.95  # configurable from admin
+hazlo_secret_key: str = ""  # for Fernet encryption of API keys
 ```
 
 ## Implementation Plan
@@ -167,25 +176,24 @@ auto_approve_threshold: float = 0.95  # configurable from admin
 **Goal:** Auto-classify `is_children_activity`, `is_toddler_friendly`, assign `confidence_score`. Reduce human review by ~60%. Admin panel for LLM providers.
 
 **New files:**
+
+> **Note:** `quality_classifier.py`, `infrastructure/llm/providers/{base,gemini,openrouter}.py`, `infrastructure/llm/client.py` were superseded by Phase 3 (pydantic-ai agents). See CHANGELOG.md.
+
 ```
 hazlo/application/
 ├── services/
 │   ├── __init__.py
 │   ├── enrichment_service.py    # Deterministic: normalize, lookup metro
-│   ├── dedup_service.py         # Deterministic: pg_trgm similarity
-│   ├── quality_classifier.py    # LLM: classification + confidence
-│   └── review_engine.py         # Rules: approve/reject/flag
+│   ├── dedup_service.py         # Deterministic: Jaccard token similarity
+│   └── review_engine.py         # Rules: approve/flag
 
 hazlo/infrastructure/
 ├── llm/
-│   ├── __init__.py
-│   ├── providers/
+│   ├── agents/
 │   │   ├── __init__.py
-│   │   ├── base.py              # LLMProvider protocol
-│   │   ├── gemini.py            # Google Gemini direct API
-│   │   ├── openrouter.py        # OpenRouter gateway
-│   │   └── openai.py            # OpenAI direct API
-│   ├── client.py                # Provider router + fallback
+│   │   ├── quality_classifier.py    # pydantic-ai QualityClassifierAgent
+│   │   ├── location_enrichment.py   # pydantic-ai LocationEnrichmentAgent
+│   │   └── date_parser.py           # pydantic-ai DateParserAgent
 │   └── prompts.py               # System prompts
 ├── crypto.py                    # Fernet encrypt/decrypt for API keys
 
@@ -216,14 +224,14 @@ ALTER TABLE extraction_runs ADD COLUMN events_created INTEGER DEFAULT 0;
 ALTER TABLE extraction_runs ADD COLUMN events_flagged INTEGER DEFAULT 0;
 ALTER TABLE extraction_runs ADD COLUMN events_auto_approved INTEGER DEFAULT 0;
 ALTER TABLE extraction_runs ADD COLUMN events_auto_rejected INTEGER DEFAULT 0;
-ALTER TABLE extraction_runs ADD COLUMN snapshot JSONB DEFAULT NULL;
+ALTER TABLE extraction_runs ADD COLUMN snapshot JSONB DEFAULT NULL;  -- exists in DB but never written — planned for future use
 ```
 
-### Phase 2: pg_trgm Dedup + Geocoding Enrichment
+### Phase 2: Geocoding Enrichment
 
-- PostgreSQL `pg_trgm` extension for trigram similarity
 - Address → metro/barrio lookup table
 - Category inference from source metadata + description keywords
+- Dedup already implemented (pure-Python Jaccard token similarity)
 
 ### Phase 3: Auto-healing Parser (only if Phase 1-2 stable)
 
@@ -246,7 +254,7 @@ ALTER TABLE extraction_runs ADD COLUMN snapshot JSONB DEFAULT NULL;
 
 ### Rate Limiting
 - Batch events: 10 per LLM call
-- Circuit breaker: 3 failures → fallback provider or rules-only
+- pydantic-ai FallbackModel handles provider rotation
 - Cost guard: max $5/month alert (configurable)
 
 ## Admin Panel Features
@@ -294,7 +302,7 @@ ALTER TABLE extraction_runs ADD COLUMN snapshot JSONB DEFAULT NULL;
 |---|---|---|---|---|
 | Auto-ingestion | Multi-source, adaptive | Manual | Platform-only | Platform-only |
 | Classification | LLM + rules | Manual tags | Opaque algorithm | Manual |
-| Deduplication | pg_trgm + date + venue | None | Platform-only | None |
+| Deduplication | Jaccard token similarity + date | None | Platform-only | None |
 | Quality scoring | Confidence-scored | None | Engagement-based | None |
 | LLM provider switching | Admin panel, zero downtime | N/A | N/A | N/A |
 | Human review | Configurable threshold | N/A | N/A | N/A |
@@ -318,22 +326,20 @@ hazlo/
 │   ├── use_cases/             # Orchestrate services, no framework imports
 │   │   ├── ingest_source.py   # Main ingestion use case
 │   │   └── review_event.py    # Human review use case
-│   └── services/              # Deterministic + LLM services
+│   └── services/              # Deterministic services
 │       ├── enrichment_service.py   # Normalize dates, prices, addresses
-│       ├── dedup_service.py        # pg_trgm similarity check
-│       ├── quality_classifier.py   # LLM classification
+│       ├── dedup_service.py        # Jaccard token similarity check
 │       └── review_engine.py        # Rule-based decision
 │
 ├── infrastructure/            # Implementations of ports
 │   ├── adapters/              # Source connectors (RSS, Web, Email)
 │   ├── api/                   # FastAPI routers + schemas + deps
 │   ├── db/                    # SQLAlchemy models + repositories
-│   ├── llm/                   # LLM provider implementations
-│   │   ├── providers/
-│   │   │   ├── base.py        # LLMProvider protocol
-│   │   │   ├── gemini.py      # Google Gemini direct
-│   │   │   └── openrouter.py  # OpenRouter gateway
-│   │   ├── client.py          # Provider router + fallback
+│   ├── llm/                   # pydantic-ai agent implementations
+│   │   ├── agents/
+│   │   │   ├── quality_classifier.py    # QualityClassifierAgent
+│   │   │   ├── location_enrichment.py   # LocationEnrichmentAgent
+│   │   │   └── date_parser.py           # DateParserAgent
 │   │   └── prompts.py         # System prompts
 │   ├── crypto.py              # Fernet encrypt/decrypt
 │   └── prefect/               # Orchestration flows
@@ -374,19 +380,9 @@ class EnrichmentService:
 ```
 
 ```python
-# application/services/quality_classifier.py
-class QualityClassifier:
-    """LLM: classify event properties + confidence score."""
-
-    def __init__(self, llm_client: LLMClient) -> None:
-        self._client = llm_client
-
-    async def execute(self, event: Event) -> ClassificationResult:
-        """Input: Event domain object. Output: ClassificationResult.
-
-        Single LLM call. Structured output via Pydantic.
-        """
-        ...
+# infrastructure/llm/agents/quality_classifier.py — pydantic-ai agent
+# QualityClassifierAgent uses pydantic-ai structured output
+# No LLMClient class — pydantic-ai FallbackModel handles provider rotation
 ```
 
 ### Testing Strategy
@@ -426,8 +422,8 @@ Every automatic decision in the pipeline must be traceable:
 |---|---|---|
 | Adapter fetch | Raw response, parse errors | `source_health.last_failure_at`, logs |
 | Enrichment | Normalized fields, lookup results | Event fields (address, metro, category) |
-| Dedup | Similarity score, matched event ID | `agent_review.duplicate_of` |
-| Quality classification | LLM prompt, response, confidence, model | `llm_calls` table, `events.confidence_score` |
+| Dedup | Similarity score, matched event ID | `agent_review` (bool only — no `duplicate_of` persisted) |
+| Quality classification | LLM prompt, response, confidence, model | `events.confidence_score` |
 | Review decision | Rules evaluated, threshold, action | `reviews` table, `events.agent_review` |
 
 If a human cannot explain why an event was auto-approved or rejected by looking at these records, the pipeline has a bug.
@@ -440,14 +436,12 @@ If a human cannot explain why an event was auto-approved or rejected by looking 
 
 ```
 PENDING ──auto/review──▶ APPROVED ──human only──▶ PUBLISHED
-   │
-   └──────reject──────▶ REJECTED (terminal)
 ```
 
 | Transition | Who | When |
 |---|---|---|
 | PENDING → APPROVED | Machine (confidence >= threshold) OR Human | Auto-approve or manual review |
-| PENDING → REJECTED | Machine (confidence < threshold) OR Human | Auto-reject or manual review |
+| PENDING → REJECTED | **Human only** | Manual review — auto-rejection NOT implemented (ReviewEngine returns PENDING, never REJECTED) |
 | APPROVED → PUBLISHED | **Human only** | Manual publish action in admin panel |
 | APPROVED → REJECTED | **Human only** | Change of mind after auto-approve |
 
@@ -493,8 +487,8 @@ class ExtractionRunModel(Base):
 | `events_created` | int | New events saved to DB (not duplicates) |
 | `events_flagged` | int | Events sent to human review queue |
 | `events_auto_approved` | int | Events auto-approved by classifier |
-| `events_auto_rejected` | int | Events auto-rejected by classifier |
-| `snapshot` | JSONB | Raw response sample for debugging |
+| `events_auto_rejected` | int | Events auto-rejected by classifier (NOT implemented — ReviewEngine returns PENDING, never REJECTED) |
+| `snapshot` | JSONB | Raw response sample for debugging (column exists but never written — planned for future use) |
 
 ### Lifecycle
 
@@ -504,7 +498,7 @@ Source triggers run → ExtractionRun(status="running", started_at=now)
     ├── Adapter fetch → documents_fetched = N
     ├── Parse → events_extracted = M
     ├── Dedup → events_created = K
-    ├── Quality classify → events_auto_approved, events_flagged, events_auto_rejected
+    ├── Quality classify → events_auto_approved, events_flagged
     │
     └── Run complete → status="success"|"error", finished_at=now
 ```
@@ -512,8 +506,8 @@ Source triggers run → ExtractionRun(status="running", started_at=now)
 ### Admin Panel: Source Detail
 
 The source detail page (`/admin/sources/{id}`) shows:
-- Current status (active/inactive)
-- Last run: timestamp, status, events found
+- Current status (Active/Inactive via `is_active`)
+- Last run: timestamp, status (running/success/error), events found
 - Extraction history table: date, status, events found, errors
 - Quick actions: run now, toggle active, view events, edit config
 
@@ -560,16 +554,19 @@ After source is live, the detail page shows:
 
 | State | Meaning | Actions available |
 |---|---|---|
-| `active` | Running on schedule | Pause, run now, edit, delete |
-| `inactive` | Paused, no scheduled runs | Activate, edit, delete |
-| `error` | Last run failed | View error, run now, edit, delete |
-| `testing` | Connection test in progress | View test results |
+| Active (`is_active=True`) | Running on schedule | Pause, run now, edit, delete |
+| Inactive (`is_active=False`) | Paused, no scheduled runs | Activate, edit, delete |
+| Last run status: `running` / `success` / `error` | Tracked via `extraction_runs.status` | View error, run now, edit, delete |
 
 ## LLM Evaluation
+
+> **Planned — not started.** `tests/data/gold_events.jsonl` and `llm_calls` table do not exist.
 
 Governance for the Quality Classifier. Without evaluation, the classifier is a black box.
 
 ### Gold Dataset
+
+> Not yet implemented.
 
 Maintain a labeled dataset of events with known classifications:
 
@@ -583,6 +580,8 @@ Minimum: 50 events covering edge cases (ambiguous titles, multi-language, missin
 
 ### Metrics
 
+> Targets defined, measurement not implemented.
+
 | Metric | Target | How measured |
 |---|---|---|
 | Precision (is_children) | >= 0.90 | TP / (TP + FP) on gold dataset |
@@ -592,6 +591,8 @@ Minimum: 50 events covering edge cases (ambiguous titles, multi-language, missin
 | Confidence calibration | >= 0.80 | Correlation between predicted confidence and actual accuracy |
 
 ### Prompt Versioning
+
+> Part of planned LLM Evaluation — not yet implemented.
 
 Every prompt change is tracked:
 
@@ -603,9 +604,11 @@ QUALITY_CLASSIFIER_V2 = """..."""
 # Each run logs which prompt version was used
 ```
 
-Prompt versions stored in `llm_calls.prompt_version` column.
+Prompt versions would be logged with each run (tracking not yet implemented).
 
 ### Evaluation Schedule
+
+> Not yet implemented.
 
 | Trigger | Action |
 |---|---|
@@ -616,6 +619,8 @@ Prompt versions stored in `llm_calls.prompt_version` column.
 
 ### Rollback Criteria
 
+> Not yet implemented.
+
 If metrics drop below target after a change:
 
 1. Revert to previous prompt version
@@ -624,6 +629,8 @@ If metrics drop below target after a change:
 4. Notify admin via email/log
 
 ### Admin Panel: Classifier Health
+
+> Not yet implemented.
 
 - Current model + prompt version in use
 - Last evaluation: date, precision, recall, calibration

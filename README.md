@@ -41,13 +41,13 @@ and human editorial judgment.
 
 ## Key Features
 
-- **Multi-source ingestion** — RSS, Web, and Email source adapters with auto-normalization
+- **Multi-source ingestion** — RSS adapter implemented; Web and Email stubs planned
 - **Source administration panel** — Add, verify, configure, and trigger extractions on demand
 - **Event normalization** — All sources mapped to a common data model
 - **Event enrichment** — Auto-classify children's activities and toddler-friendly events via LLM
 - **Human-in-the-loop review** — Approve, edit, or reject events before publishing
-- **LLM provider management** — Configure Gemini and OpenRouter providers with admin UI
-- **Circuit breaker** — Fault-tolerant LLM calls with automatic fallback across providers
+- **LLM provider management** — Configure Gemini, OpenRouter, and Groq providers with admin UI
+- **Fallback chain** — Multi-provider LLM calls with automatic fallback (pydantic-ai FallbackModel)
 - **Full traceability** — Track extraction origin, timestamps, and manual review changes
 - **Scheduled ingestion** — Prefect-powered per-source deployments using each source capture interval
 - **SSE test integration** — Real-time log streaming for source pipeline testing
@@ -60,22 +60,19 @@ hazlo follows **DDD & Clean Architecture** principles, clearly separating layers
 hazlo/
 ├── domain/                     # Entities, value objects, business rules
 │   ├── event.py                # Event, Location, Price, TicketInfo, EventStatus
-│   ├── source.py               # Source, SourceType, SourceStatus
-│   ├── review.py               # Review, ReviewAction, transitions
-│   ├── circuit_breaker.py      # LLM fault tolerance (CLOSED→OPEN→HALF_OPEN)
-│   └── llm_provider.py         # LLM provider entity
+│   ├── source.py               # Source, SourceType
+│   ├── review.py               # Review, ReviewAction
+│   └── llm_output.py           # Pydantic LLM output schemas
 ├── application/                # Use cases + domain services
 │   ├── use_cases/
 │   │   ├── ingest_source.py         # IngestSource
-│   │   ├── review_event.py          # ReviewEvent
-│   │   └── create_event_from_source.py
+│   │   └── review_event.py          # ReviewEvent
 │   └── services/
 │       ├── enrichment_service.py    # Normalize dates, prices, addresses
-│       ├── quality_classifier.py    # LLM-based event classification
 │       ├── review_engine.py         # Auto-approve/flag based on confidence
-│       └── dedup_service.py         # Duplicate detection via title similarity
+│       └── dedup_service.py         # Duplicate detection via URL + title similarity
 ├── infrastructure/             # Frameworks, DB, API, adapters
-│   ├── adapters/               # Source connectors (RSS, Web, Email)
+│   ├── adapters/               # Source connectors (RSS implemented, Web/Email stubs)
 │   │   ├── base.py             # BaseSourceAdapter interface
 │   │   ├── rss_adapter.py
 │   │   ├── web_adapter.py
@@ -86,13 +83,14 @@ hazlo/
 │   │       ├── admin_events.py
 │   │       └── admin_llm_providers.py
 │   ├── db/                     # SQLAlchemy models + repositories
-│   ├── llm/                    # LLM client + providers + prompts
-│   │   ├── client.py           # LLMClient: routing + circuit breaker
-│   │   └── providers/
-│   │       ├── base.py         # LLMProvider ABC + ModelInfo
-│   │       ├── gemini.py
-│   │       └── openrouter.py
-│   ├── prefect/                # Scheduled flows + deployments
+│   ├── llm/                    # pydantic-ai agents + factory + prompts
+│   │   ├── factory.py          # Build LLM infrastructure (fallback chain)
+│   │   ├── prompts.py          # System prompts for agents
+│   │   └── agents/
+│   │       ├── quality_classifier.py
+│   │       ├── location_enrichment.py
+│   │       └── date_parser.py
+│   ├── prefect/                # Scheduled flows + per-source deployments
 │   └── templates/              # Jinja2 + HTMX templates
 ├── static/                     # Tailwind CSS (input.css + compiled output.css)
 └── main.py                     # FastAPI app entry point
@@ -113,7 +111,7 @@ hazlo/
 | **Validation** | Pydantic v2 |
 | **ORM** | SQLAlchemy 2.x async + PostgreSQL |
 | **Frontend** | HTMX + Jinja2 + Tailwind CSS v4 |
-| **LLM** | Gemini + OpenRouter with encrypted API key storage |
+| **LLM** | pydantic-ai agents (Gemini, OpenRouter, Groq) with encrypted API key storage |
 | **Scheduling** | Prefect 3.x |
 | **Type Checking** | ty |
 | **Linting & Formatting** | Ruff |
@@ -138,8 +136,8 @@ Each event is normalized to a common model:
 | `confidence_score` | LLM classification confidence (0.0–1.0) |
 | `agent_review` | LLM review metadata (raw response, reasoning) |
 | `source_url` | Original source URL |
-| `idempotency_key` | Deduplication key (source URL + title hash) |
-| `status` | `pending` → `approved` → `published` (rejected is terminal) |
+| `idempotency_key` | Deduplication key (source URL + title + start_at hash) |
+| `status` | `pending` → `approved` → `published` (rejected and published are terminal) |
 
 ## Source Administration Panel
 
@@ -203,12 +201,12 @@ Manage LLM API keys and model selection via the admin panel at `/admin/llm-provi
 | `POST` | `/admin/llm-providers` | Add a new provider (encrypted API key) |
 | `POST` | `/admin/llm-providers/models` | Fetch available models from provider API |
 | `POST` | `/admin/llm-providers/{id}/test` | Test provider connection |
-| `POST` | `/admin/llm-providers/{id}/activate` | Set as active provider |
-| `DELETE` | `/admin/llm-providers/{id}` | Remove provider |
+| `POST` | `/admin/llm-providers/{id}/toggle-active` | Toggle provider active/inactive |
+| `DELETE` | `/admin/llm-providers/{id}` | Remove provider (empty 200 response) |
 
 API keys are encrypted at rest using Fernet symmetric encryption
-with `HAZLO_SECRET_KEY`. The circuit breaker automatically opens after
-3 consecutive failures (60s timeout) and routes to fallback providers.
+with `HAZLO_SECRET_KEY`. pydantic-ai `FallbackModel` handles provider rotation
+automatically based on priority ordering.
 
 ## Getting Started
 
@@ -247,18 +245,17 @@ with `HAZLO_SECRET_KEY`. The circuit breaker automatically opens after
 
    Key variables (see [`.env.example`](.env.example)):
 
-   | Variable | Default | Description |
-   |----------|---------|-------------|
-   | `DATABASE_URL` | `postgresql+asyncpg://hazlo:hazlo@localhost:5433/hazlo` | PostgreSQL connection |
-   | `HAZLO_ENV` | `dev` | `dev`, `development`, `production`, or `test` |
-   | `HAZLO_SECRET_KEY` | — | Fernet key for encrypting LLM API keys (required) |
-   | `ADMIN_USER` / `ADMIN_PASSWORD` | `admin` / — | Basic auth credentials for admin panel |
-   | `AUTO_APPROVE_THRESHOLD` | `0.95` | Confidence threshold for auto-approval |
-   | `PREFECT_API_URL` | `http://localhost:4200/api` | Prefect API URL used by app + worker |
-   | `PREFECT_WORK_POOL_NAME` | `local-pool` | Prefect work pool for source deployments |
-   | `VERIFY_SSL` | `true` | SSL verification for outbound HTTP requests |
-   | `CA_BUNDLE` | — | Path to corporate CA bundle (behind proxy) |
-   | `HAZLO_AUTO_MIGRATE` | `1` | Run Alembic migrations on startup (set `0` to disable) |
+    | Variable | Default | Description |
+    |----------|---------|-------------|
+    | `DATABASE_URL` | `postgresql+asyncpg://hazlo:hazlo@localhost:5433/hazlo` | PostgreSQL connection |
+    | `HAZLO_SECRET_KEY` | — | Fernet key for encrypting LLM API keys (required) |
+    | `ADMIN_USER` / `ADMIN_PASSWORD` | `admin` / — | Basic auth credentials for admin panel |
+    | `AUTO_APPROVE_THRESHOLD` | `0.95` | Confidence threshold for auto-approval |
+    | `PREFECT_API_URL` | `http://localhost:4200/api` | Prefect API URL used by app + worker |
+    | `PREFECT_WORK_POOL_NAME` | `local-pool` | Prefect work pool for source deployments |
+    | `VERIFY_SSL` | `true` | SSL verification for outbound HTTP requests |
+    | `CA_BUNDLE` | — | Path to corporate CA bundle (behind proxy) |
+    | `HAZLO_AUTO_MIGRATE` | `1` | Run Alembic migrations on startup (set `0` to disable) |
 
 4. **Start infrastructure**
 
@@ -294,7 +291,7 @@ All services auto-configure:
 | Service | Role |
 |---------|------|
 | `postgres` | Database (PostgreSQL 14, port 5433 on host) |
-| `redis` | Cache and message broker (port 6380 on host) |
+| `redis` | Reserved for future caching (not currently used) |
 | `hazlo` | FastAPI app (port 8000) — runs migrations on entry |
 | `prefect-server` | Prefect API + UI (port 4200) |
 | `prefect-worker` | Executes scheduled and on-demand ingest flows |
@@ -349,7 +346,7 @@ Test structure mirrors the architecture:
 
 | Directory | Scope |
 |-----------|-------|
-| `tests/domain/` | Business rules: event transitions, circuit breaker, validations |
+| `tests/domain/` | Business rules: event transitions, content hash, idempotency key |
 | `tests/application/` | Use cases: ingestion, review, flow wiring |
 | `tests/infrastructure/` | Adapters, LLM providers, crypto, repositories |
 | `tests/api/` | HTTP endpoints (admin sources, events, LLM providers) |
@@ -370,53 +367,40 @@ hazlo/
 │   │   ├── event.py                # Event entity + value objects
 │   │   ├── source.py               # Source entity
 │   │   ├── review.py               # Review + audit trail
-│   │   ├── circuit_breaker.py      # LLM fault tolerance
-│   │   └── llm_provider.py         # LLM provider entity
+│   │   └── llm_output.py           # Pydantic LLM output schemas
 │   ├── application/                # Application layer (use cases + services)
 │   │   ├── use_cases/
 │   │   │   ├── ingest_source.py
-│   │   │   ├── review_event.py
-│   │   │   └── create_event_from_source.py
+│   │   │   └── review_event.py
 │   │   └── services/
 │   │       ├── enrichment_service.py
-│   │       ├── quality_classifier.py
 │   │       ├── review_engine.py
 │   │       └── dedup_service.py
 │   ├── infrastructure/             # Infrastructure layer
 │   │   ├── adapters/               # Source connectors
 │   │   │   ├── base.py
 │   │   │   ├── rss_adapter.py
-│   │   │   ├── web_adapter.py
-│   │   │   └── email_adapter.py
+│   │   │   ├── web_adapter.py      # stub
+│   │   │   └── email_adapter.py    # stub
 │   │   ├── api/                    # FastAPI routes + deps
 │   │   │   └── routes/
 │   │   │       ├── admin_sources.py
 │   │   │       ├── admin_events.py
 │   │   │       └── admin_llm_providers.py
 │   │   ├── db/                     # SQLAlchemy models + repositories
-│   │   ├── llm/                    # LLM client + providers
-│   │   │   ├── client.py
-│   │   │   └── providers/
-│   │   │       ├── base.py
-│   │   │       ├── gemini.py
-│   │   │       └── openrouter.py
+│   │   ├── llm/                    # pydantic-ai agents + factory
+│   │   │   ├── factory.py
+│   │   │   ├── prompts.py
+│   │   │   └── agents/
+│   │   │       ├── quality_classifier.py
+│   │   │       ├── location_enrichment.py
+│   │   │       └── date_parser.py
 │   │   ├── prefect/                # Scheduled flows + deployments
 │   │   │   ├── flows.py
 │   │   │   └── deployments.py
 │   │   └── templates/              # Jinja2 + HTMX templates
 │   ├── static/                     # Tailwind CSS (input.css)
 │   └── main.py                     # FastAPI app entry point
-├── tests/                          # Test suite
-│   ├── domain/
-│   ├── application/
-│   ├── infrastructure/
-│   │   └── llm/
-│   └── api/
-├── alembic/                        # Database migrations
-├── docker/                         # Docker entrypoint scripts
-├── docker-compose.yml              # Full stack orchestration
-├── pyproject.toml                  # Project metadata + dependencies
-└── mise.toml                       # Task runner config
 ```
 
 ## Roadmap
@@ -452,13 +436,14 @@ If `DATABASE_URL` is set in your host `.env`, Docker Compose may pick it up inst
 
 ### IntegrityError on event save
 
-Events use `session.merge()` for upsert behavior. If you see `IntegrityError`, check that the repository method uses `merge()` (not `add()`) for entities that might be re-saved.
+Events use PostgreSQL `INSERT ... ON CONFLICT (source_url) DO UPDATE` for upsert.
+If you see `IntegrityError`, check that unique constraints (`source_url`, `idempotency_key`, `content_hash`) are not violated by test data.
 
 ### LLM classification slow or failing
 
 - 1000+ events with LLM calls = ~30 minutes. Consider batch processing.
-- Gemini sometimes returns non-JSON. The classifier handles this gracefully with defaults.
-- Check circuit breaker status at `/admin/llm-providers` — open circuits skip to fallback providers.
+- pydantic-ai structured output guarantees valid responses — no manual JSON parsing needed.
+- Check provider status at `/admin/llm-providers` — `FallbackModel` rotates to next provider on failure.
 
 ## License
 

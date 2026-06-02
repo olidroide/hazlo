@@ -96,7 +96,7 @@ When in doubt, update. Stale docs are worse than no docs.
 - `domain/llm_output.py` — Pydantic models for structured LLM output (`ClassificationOutput`, `LocationEnrichmentOutput`, `ClassificationResult`)
 - `infrastructure/llm/agents/quality_classifier.py` — `QualityClassifierAgent` (pydantic-ai Agent with `output_type=ClassificationOutput`)
 - `infrastructure/llm/agents/location_enrichment.py` — `LocationEnrichmentAgent` (pydantic-ai Agent with `output_type=LocationEnrichmentOutput`)
-- `infrastructure/llm/prompts.py` — System prompts (`QUALITY_CLASSIFIER_V1`, `LOCATION_ENRICHMENT_V1`)
+- `infrastructure/llm/prompts.py` — System prompts (`QUALITY_CLASSIFIER_V1`, `LOCATION_ENRICHMENT_V2`)
 - `application/services/review_engine.py` — auto-approves events above confidence threshold
 
 **Removed (Phase 3):**
@@ -112,7 +112,7 @@ When in doubt, update. Stale docs are worse than no docs.
 
 **Pydantic AI agents (Phase 3 — all legacy removed):**
 - `QualityClassifierAgent` uses `Agent(model, output_type=ClassificationOutput, instructions=QUALITY_CLASSIFIER_V1)`
-- `LocationEnrichmentAgent` uses `Agent(model, output_type=LocationEnrichmentOutput, instructions=LOCATION_ENRICHMENT_V1)`
+- `LocationEnrichmentAgent` uses `Agent(model, output_type=LocationEnrichmentOutput, instructions=LOCATION_ENRICHMENT_V2)`
 - Structured output validated automatically by pydantic-ai — no manual JSON parsing
 - Automatic retries on invalid output (configurable `retries` param, default 3)
 - Exception handling: catches all exceptions and returns fallback results (confidence=0.0 for classifier, original event for enrichment)
@@ -121,9 +121,9 @@ When in doubt, update. Stale docs are worse than no docs.
 - All production call sites (`flows.py`, `ingest_source.py`) use new agents
 - Tests use `FunctionModel` to mock structured output responses
 
-**Circuit breaker (domain only):**
-- `domain/circuit_breaker.py` — CLOSED→OPEN→HALF_OPEN state machine (kept for future use)
-- Note: FallbackModel in pydantic-ai handles failover
+**Failover mechanism:**
+- pydantic-ai `FallbackModel` is the active failover (Gemini → OpenRouter)
+- Domain `CircuitBreaker` class was deleted — no longer needed
 
 **Rules:**
 - Never store API keys in settings.py — use the DB with encrypted storage
@@ -137,9 +137,9 @@ When in doubt, update. Stale docs are worse than no docs.
 
 | Entity | Method | Why |
 |--------|--------|-----|
-| Event | `merge()` | Events can be re-ingested (same idempotency_key) |
+| Event | Postgres: `INSERT ... ON CONFLICT (source_url) DO UPDATE`; SQLite/tests: `merge()` | Upsert by source_url; merge() fallback for tests |
 | Source | `merge()` | Sources can be re-configured (same ID) |
-| LLMProvider | `merge()` | Providers can be updated (same ID) |
+| Provider | `merge()` | Providers can be updated (same ID) |
 | Review | `add()` | Reviews are append-only audit trail (never update) |
 | ExtractionRun | `add()` | Runs are append-only history (never update) |
 
@@ -189,12 +189,7 @@ await client.create_deployment(
 - Without LLM classification = ~7 seconds
 - Consider batch processing or skipping LLM for low-priority sources
 
-**Gemini quirks:**
-- `QUALITY_CLASSIFIER_V1` prompt sometimes returns non-JSON
-- `QualityClassifier._parse_response()` handles gracefully with defaults
-- Monitor LLM response format and adjust prompts as needed
-
-## Lessons Learned — Critical Gotchas
+## Lessons Learned
 
 1. **Docker build requires README.md** — hatchling includes it in package metadata. `.dockerignore` must have `!README.md` to un-exclude it.
 

@@ -24,6 +24,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **RSS recency cap**: RSS adapter now processes only the most recent 30 feed items by default (`rss_max_results`) before normalization to reduce backlog and LLM load.
 - **Ingestion observability logs**: Added detailed phase logs and timings (fetch, parse/select RSS, dedup preload, LLM infra boot, execute, persist, commit) plus traceback logging for fetch/normalize/task exceptions.
 
+### Removed
+
+- **Dead code cleanup**: Deleted 8 unused modules (`domain/llm_provider.py`, `domain/source_health.py`, `domain/circuit_breaker.py`, `application/services/source_health_service.py`, `infrastructure/api/schemas.py`, `infrastructure/llm/__init__.py`, `tests/domain/test_circuit_breaker.py`, `tests/application/test_source_health_service.py`). Removed `ingest_all_sources_flow` (never deployed). Dropped 5 dead Settings fields (`hazlo_env`, `ssl_cert_file`, `llm_circuit_breaker_*`, `prefect_server_analytics_enabled`). Removed 6 dead env vars from `.env.example` (`GEMINI_*`, `OPENROUTER_*`, `LLM_TIMEOUT`, `LLM_MAX_RETRIES`).
+- **Redundant dependency**: Removed `pydantic-ai-slim[groq]` (full `pydantic-ai` already includes groq). Added explicit `cryptography>=42` dependency.
+- **Dead column**: Dropped `extraction_runs.snapshot` (created in initial schema but never written or read).
+- **NotImplementedError stubs**: Replaced with `AdapterNotImplementedError` for clearer error messages on unimplemented Web/Email adapters.
+
 ### Fixed
 
 - **Scheduler contract mismatch**: Replaced legacy global `every-30-minutes`/`manual-trigger` deployment model with per-source reconciliation, so Prefect schedule now matches source capture interval configured in admin.
@@ -35,7 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Admin navigation redirects**: Normalized admin links to canonical trailing-slash routes (`/admin/sources/`, `/admin/events/?status=...`, `/admin/llm-providers/`) to avoid extra `307 Temporary Redirect` round-trips.
 - **LLM JSON parsing**: `maxOutputTokens: 200` truncated Gemini responses. Increased to 500. Pydantic AI structured output eliminates manual JSON parsing.
 - **Price display**: Show `amount_cents/100` correctly in euros.
-- **Repository upsert bug**: `EventRepository.save()` and `SourceRepository.save()` used `session.add()` which fails on duplicate entities. Changed to `session.merge()` for upsert behavior.
+- **Repository upsert bug**: `EventRepository.save()` used `session.add()` which fails on duplicate entities. Replaced with PostgreSQL `INSERT ... ON CONFLICT (source_url) DO UPDATE` (with `session.merge()` fallback for SQLite tests).
 - **LLM provider save**: `LLMProviderRepository.save()` used `session.add()`. Changed to `session.merge()` to allow provider updates.
 - **Prefect deployment entrypoints**: `from_source().deploy()` corrupted module-path entrypoints to file paths. Fixed by using `client.create_deployment()` directly with explicit `entrypoint` parameter.
 - **Docker DATABASE_URL**: `${DATABASE_URL:-...}` picked up host `.env` value. Changed to use shared `POSTGRES_*` variables for Docker-internal connections.

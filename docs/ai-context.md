@@ -31,33 +31,31 @@ or adapter in a use case, receive it via constructor injection (port/adapter pat
 hazlo/
 ├── domain/                    # Entities, value objects, enums, business rules
 │   ├── event.py               # Event, EventStatus, Location, Price, TicketInfo
-│   ├── source.py              # Source, SourceType, SourceStatus
+│   ├── source.py              # Source, SourceType
 │   ├── review.py              # Review, ReviewAction, InvalidTransitionError
-│   ├── llm_provider.py        # LLMProvider entity (admin-configurable providers)
-│   ├── llm_output.py          # Pydantic models for LLM structured output (ClassificationOutput, LocationEnrichmentOutput)
-│   └── source_health.py       # SourceHealth entity (per-source metrics)
+│   └── llm_output.py          # Pydantic models for LLM structured output
 ├── application/
 │   ├── use_cases/             # Orchestrate services, no framework imports
 │   │   ├── ingest_source.py   # IngestSource use case (adapter → enrich → dedup → classify → review)
 │   │   └── review_event.py    # ReviewEvent use case
-│   └── services/              # Deterministic + LLM services
+│   └── services/              # Deterministic services
 │       ├── enrichment_service.py   # Normalize dates, prices, addresses, infer category
 │       ├── dedup_service.py        # URL + title similarity dedup
-│       ├── quality_classifier.py   # LLM: classify is_children, is_toddler, confidence
-│       └── review_engine.py        # Rules: approve/reject/flag based on confidence
+│       └── review_engine.py        # Rules: approve/flag based on confidence
 ├── infrastructure/
 │   ├── adapters/              # Source connectors (BaseSourceAdapter ABC)
-│   ├── api/                   # FastAPI routes + schemas + deps
+│   ├── api/                   # FastAPI routes + deps
 │   ├── db/                    # SQLAlchemy models + async repositories
-│   ├── llm/                   # LLM provider implementations
-│   │   ├── agents/            # Pydantic AI agents (QualityClassifierAgent, LocationEnrichmentAgent)
+│   ├── llm/                   # pydantic-ai agents + factory + prompts
+│   │   ├── factory.py         # Build LLM infrastructure (fallback chain)
+│   │   ├── agents/            # Pydantic AI agents (QualityClassifierAgent, LocationEnrichmentAgent, DateParserAgent)
 │   │   └── prompts.py         # System prompts
 │   ├── crypto.py              # Fernet encrypt/decrypt for API keys
 │   ├── prefect/               # Scheduled flows + deployments
 │   ├── static/                # CSS, JS, images
 │   └── templates/             # Jinja2 + HTMX templates
 ├── main.py                    # FastAPI app entry point
-└── settings.py                # Pydantic Settings (LLM config, threshold, secret key)
+└── settings.py                # Pydantic Settings (threshold, secret key, prefect URLs)
 ```
 
 ## Key Entities
@@ -66,13 +64,13 @@ hazlo/
 
 ```
 PENDING ──▶ APPROVED ──▶ PUBLISHED
-   │            │
-   └──────▶ REJECTED ◀────────┘
+   │
+   └──────▶ REJECTED
 ```
 
 Allowed transitions (`ALLOWED_TRANSITIONS` in `domain/event.py`):
 - PENDING → {APPROVED, REJECTED}
-- APPROVED → {PUBLISHED, REJECTED}
+- APPROVED → {PUBLISHED}
 
 Invalid transitions raise `InvalidTransitionError`.
 
@@ -136,21 +134,17 @@ Source → Adapter (deterministic) → Idempotency Check → EnrichmentService �
 **LLM layer** (`hazlo/infrastructure/llm/`):
 - `agents/quality_classifier.py`: `QualityClassifierAgent` — pydantic-ai Agent with `output_type=ClassificationOutput`
 - `agents/location_enrichment.py`: `LocationEnrichmentAgent` — pydantic-ai Agent with `output_type=LocationEnrichmentOutput`
-- `prompts.py`: system prompts for QualityClassifier (V1) and LocationEnrichment (V1)
-- Admin routes use pydantic-ai providers directly (`GoogleProvider`, `OpenRouterProvider`) for `test_connection` and `list_models`
+- `agents/date_parser.py`: `DateParserAgent` — pydantic-ai Agent with `output_type=DateParsingOutput`
+- `prompts.py`: system prompts for QualityClassifier (V1), LocationEnrichment (V2), DateParsing (V1)
+- `factory.py`: `build_llm_infrastructure()` creates pydantic-ai models + `FallbackModel` chain
+- Admin routes use pydantic-ai providers directly for `test_connection` and `list_models`
 
-**Circuit Breaker** (`hazlo/domain/circuit_breaker.py`):
-- Per-provider circuit breaker protecting against cascading LLM failures
-- States: CLOSED → OPEN (after N consecutive failures) → HALF_OPEN (after timeout) → CLOSED
-- `LLMClient.generate()` skips providers with OPEN circuits
-- Configurable via `llm_circuit_breaker_failure_threshold` (default: 3) and `llm_circuit_breaker_reset_timeout_seconds` (default: 60)
-- `LLMClient.circuit_metrics` exposes per-provider state and failure counts
-- `LLMClient.reset_all_circuits()` for manual recovery
+**Fallback chain** (replaces circuit breaker): pydantic-ai `FallbackModel` handles provider rotation automatically. Multiple providers may be active simultaneously; `FallbackModel` tries them in priority order (lowest `priority` first). If a provider fails, the next one in the chain is tried automatically. No circuit state is tracked — failures are per-call.
 
 **LLM Evaluation** (planned): gold dataset, precision/recall metrics, prompt versioning, rollback criteria.
 See `docs/agentic-system.md` → "LLM Evaluation" section.
 
-**Pydantic AI** (adopted, Phase 3 complete — legacy removed): All production call sites use pydantic-ai agents. `QualityClassifierAgent` and `LocationEnrichmentAgent` use pydantic-ai 1.102.0 with structured output (`output_type`), automatic retries, exception handling (returns fallback on failure), and `FallbackModel` for provider failover. Legacy `LLMClient`/`GeminiProvider`/`OpenRouterProvider`/`QualityClassifier`/`LLMEnrichmentService` removed (~650 LOC). Admin routes use pydantic-ai providers directly. `_build_llm_infrastructure()` in `flows.py` creates pydantic-ai `GoogleModel`/`OpenRouterModel` + `FallbackModel`. Tests use `FunctionModel` to mock structured output responses.
+**Pydantic AI** (adopted, Phase 3 complete — legacy removed): All production call sites use pydantic-ai agents. `QualityClassifierAgent` and `LocationEnrichmentAgent` use pydantic-ai 1.102.0 with structured output (`output_type`), automatic retries, exception handling (returns fallback on failure), and `FallbackModel` for provider failover. Legacy `LLMClient`/`GeminiProvider`/`OpenRouterProvider`/`QualityClassifier`/`LLMEnrichmentService` removed (~650 LOC). Admin routes use pydantic-ai providers directly. `build_llm_infrastructure()` in `flows.py` creates pydantic-ai `GoogleModel`/`OpenRouterModel`/`GroqModel` + `FallbackModel`. Tests use `FunctionModel` to mock structured output responses.
 
 **Active provider selection contract**: Multiple LLM providers may be active simultaneously for fallback chains. When a single "primary" active provider is required, repository lookups must be deterministic by `priority` (lowest value first), not `scalar_one_or_none()` over all active rows.
 
@@ -167,14 +161,17 @@ See `docs/agentic-system.md` → "LLM Evaluation" section.
 | DELETE | `/admin/sources/{id}` | `delete_source` | Empty 200, deletes source + Prefect deployment |
 | GET | `/admin/events/` | `list_events` | HTML event list (`?status=`) |
 | GET | `/admin/events/{id}` | `get_event` | HTML event card |
+| GET | `/admin/events/{id}/detail` | `get_event_detail` | HTML event detail |
 | PATCH | `/admin/events/{id}/review` | `review_event` | HTML event card |
 | GET | `/admin/events/{id}/audit` | `get_event_audit` | HTML audit trail |
+| POST | `/admin/events/{id}/enrich` | `enrich_event` | HTML event card (LLM enrichment) |
 | GET | `/admin/llm-providers/` | `list_llm_providers` | HTML LLM provider list |
 | GET | `/admin/llm-providers/_new` | `new_provider_form` | HTML create form |
+| POST | `/admin/llm-providers/models` | `list_provider_models` | HTML model list |
 | POST | `/admin/llm-providers/` | `create_provider` | HTML row (HTMX) |
-| POST | `/admin/llm-providers/{id}/test` | `test_provider_connection` | JSON {success: bool} |
-| POST | `/admin/llm-providers/{id}/activate` | `activate_provider` | JSON {success: bool} |
-| DELETE | `/admin/llm-providers/{id}` | `delete_provider` | JSON {success: bool} |
+| POST | `/admin/llm-providers/{id}/test` | `test_provider_connection` | HTML test result |
+| POST | `/admin/llm-providers/{id}/toggle-active` | `toggle_provider_active` | HTML row (HTMX) |
+| DELETE | `/admin/llm-providers/{id}` | `delete_provider` | Empty 200 |
 | GET | `/` | `root` | HTML base template |
 
 All routes return server-rendered HTML. HTMX swaps partials (`_row.html`,
@@ -292,13 +289,13 @@ Pre-commit hook (`.githooks/pre-commit`) blocks commits where `hazlo/*.py` files
 
 Emergency bypass: `git commit --no-verify` (requires justification in commit message).
 
-## Repository Pattern — merge() vs add()
+## Repository Pattern — upsert vs add()
 
-**Rule: Use `session.merge()` for upsert, `session.add()` for append-only.**
+**Rule: Use PG `ON CONFLICT DO UPDATE` for upsert, `session.add()` for append-only.**
 
 | Entity | Method | Why |
 |--------|--------|-----|
-| Event | `merge()` | Events can be re-ingested (same idempotency_key) |
+| Event | `INSERT ... ON CONFLICT (source_url) DO UPDATE` | Events can be re-ingested (same source_url); SQLite fallback uses `merge()` |
 | Source | `merge()` | Sources can be re-configured (same ID) |
 | LLMProvider | `merge()` | Providers can be updated (same ID) |
 | Review | `add()` | Reviews are append-only audit trail (never update) |
@@ -350,17 +347,17 @@ await client.create_deployment(
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DATABASE_URL` | `postgresql+asyncpg://hazlo:hazlo@localhost:5433/hazlo` | PostgreSQL async connection |
-| `HAZLO_ENV` | `development` | `development` / `production` / `test` |
-| `GEMINI_API_KEY` | `""` | Google AI Studio API key |
-| `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model to use |
-| `LLM_TIMEOUT` | `30` | LLM call timeout (seconds) |
-| `LLM_MAX_RETRIES` | `2` | Max retries on LLM failure |
 | `AUTO_APPROVE_THRESHOLD` | `0.95` | Confidence threshold for auto-approve |
 | `HAZLO_SECRET_KEY` | `""` | Fernet key for encrypting API keys |
-| `LLM_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | `3` | Consecutive failures to open circuit |
-| `LLM_CIRCUIT_BREAKER_RESET_TIMEOUT_SECONDS` | `60.0` | Seconds before HALF_OPEN attempt |
+| `VERIFY_SSL` | `true` | SSL verification for outbound HTTP requests |
+| `CA_BUNDLE` | `None` | Path to corporate CA bundle (behind proxy) |
 | `PREFECT_API_URL` | `http://localhost:4200/api` | Prefect API base URL for app + worker reconciliation |
 | `PREFECT_WORK_POOL_NAME` | `local-pool` | Prefect work pool for per-source deployments |
+| `PREFECT_INGEST_FLOW_TIMEOUT_SECONDS` | `1500` | Prefect flow timeout (seconds) |
+| `PREFECT_FETCH_SOURCE_TASK_TIMEOUT_SECONDS` | `1200` | Prefect task timeout (seconds) |
+| `RSS_MAX_RESULTS` | `30` | Max results per RSS fetch |
+
+LLM provider API keys are configured via `/admin/llm-providers` (encrypted in DB), not via env vars.
 
 Settings class: `hazlo/settings.py` (Pydantic BaseSettings).
 
@@ -369,11 +366,11 @@ Settings class: `hazlo/settings.py` (Pydantic BaseSettings).
 | Service | Port | Purpose |
 |---------|------|---------|
 | postgres | 5433 | App + Prefect database |
-| redis | — | Prefect broker |
+| redis | 6380 | Reserved for future caching (not currently used) |
 | prefect-server | 4200 | Prefect UI + API |
 | prefect-worker | — | Flow execution |
 
-Init script creates `hazlo` and `prefect` databases.
+Init script creates `prefect` database; `hazlo` database is created from `POSTGRES_DB` env var.
 
 ## Versioning
 
