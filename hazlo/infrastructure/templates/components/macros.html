@@ -1,0 +1,37 @@
+{# macros: reusable Jinja2 macros #}
+
+{% macro btn(text, variant='default', type='button', disabled=false, hx_post='', hx_patch='', hx_target='', hx_swap='', hx_vals='', hx_confirm='') -%}
+{% set base = "inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium rounded-md transition-colors" %}
+{% if variant == 'primary' %}
+  {% set classes = base ~ " text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50" %}
+{% elif variant == 'danger' %}
+  {% set classes = base ~ " text-red-700 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/40 disabled:opacity-50" %}
+{% elif variant == 'secondary' %}
+  {% set classes = base ~ " text-neutral-700 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-600 disabled:opacity-50" %}
+{% elif variant == 'purple' %}
+  {% set classes = base ~ " text-purple-700 bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/20 dark:text-purple-300 dark:hover:bg-purple-900/40 disabled:opacity-50" %}
+{% else %}
+  {% set classes = base ~ " text-neutral-700 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-700 dark:text-neutral-200 disabled:opacity-50" %}
+{% endif %}
+<button type="{{ type }}" class="{{ classes }}"
+  {% if disabled %}disabled{% endif %}
+  {% if hx_post %}hx-post="{{ hx_post }}"{% endif %}
+  {% if hx_patch %}hx-patch="{{ hx_patch }}"{% endif %}
+  {% if hx_target %}hx-target="{{ hx_target }}"{% endif %}
+  {% if hx_swap %}hx-swap="{{ hx_swap }}"{% endif %}
+  {% if hx_vals %}hx-vals='{{ hx_vals }}'{% endif %}
+  {% if hx_confirm %}hx-confirm="{{ hx_confirm }}"{% endif %}
+>
+  <span class="btn-spinner mr-2"></span>{{ text }}
+</button>
+{%- endmacro %}
+
+{% macro diff(old, new) -%}
+{% if old != new %}
+<span class="line-through text-red-600 dark:text-red-400">{{ old }}</span>
+<span class="mx-1">→</span>
+<span class="text-green-600 dark:text-green-400 font-medium">{{ new }}</span>
+{% else %}
+<span class="text-neutral-600 dark:text-neutral-400">{{ new }}</span>
+{% endif %}
+{%- endmacro %}

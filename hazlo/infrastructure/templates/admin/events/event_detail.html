@@ -1,0 +1,327 @@
+{% extends base %}
+
+{% block title %}{{ event.title }} - Hazlo Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+    <!-- Breadcrumb -->
+    <nav class="flex items-center text-sm text-neutral-500 dark:text-neutral-400">
+        <a href="/admin/events/?status=pending" class="hover:text-teal-600">Cola de revisión</a>
+        <svg class="w-4 h-4 mx-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+        <span class="text-neutral-900 dark:text-white font-medium truncate">{{ event.title }}</span>
+    </nav>
+
+    <!-- Flash messages -->
+    {% if edit_success %}
+    <div class="rounded-md p-4 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200">
+        Cambios guardados correctamente.
+    </div>
+    {% endif %}
+    {% if reparse_success %}
+    <div class="rounded-md p-4 bg-purple-50 dark:bg-purple-900/20 text-purple-800 dark:text-purple-200">
+        Re-parseo completado. {{ reparse_reasoning }}
+    </div>
+    {% endif %}
+    {% if reparse_error %}
+    <div class="rounded-md p-4 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200">
+        Error: {{ reparse_error }}
+    </div>
+    {% endif %}
+
+    <!-- Header -->
+    <div class="bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 p-6">
+        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-neutral-900 dark:text-white">{{ event.title }}</h1>
+                <div class="flex items-center gap-3 mt-2">
+                    {% set status = event.status %}
+                    {% include "components/molecules/status_pill.html" %}
+                    {% if event.confidence_score is not none %}
+                    {% set confidence = event.confidence_score %}
+                    {% include "components/atoms/confidence_bar.html" %}
+                    {% endif %}
+                </div>
+            </div>
+            <!-- Action bar -->
+            <div class="flex flex-wrap gap-2">
+                {% if event.status == 'pending' %}
+                {% if unified_reparse %}
+                <button hx-post="/admin/events/{{ event.id }}/reparse"
+                        hx-target="#main-content"
+                        hx-swap="innerHTML"
+                        class="px-4 py-2 text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/20 dark:text-purple-300 rounded-md">
+                    <span class="btn-spinner mr-2"></span>Re-parsear con IA
+                </button>
+                {% endif %}
+                <button hx-patch="/admin/events/{{ event.id }}/review"
+                        hx-vals='{"action": "approve"}'
+                        hx-target="#main-content"
+                        hx-swap="innerHTML"
+                        class="px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-md">
+                    Aprobar
+                </button>
+                <button hx-patch="/admin/events/{{ event.id }}/review"
+                        hx-vals='{"action": "reject"}'
+                        hx-target="#main-content"
+                        hx-swap="innerHTML"
+                        hx-confirm="¿Rechazar este evento?"
+                        class="px-4 py-2 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 rounded-md">
+                    Rechazar
+                </button>
+                {% elif event.status == 'approved' %}
+                <button hx-patch="/admin/events/{{ event.id }}/review"
+                        hx-vals='{"action": "publish"}'
+                        hx-target="#main-content"
+                        hx-swap="innerHTML"
+                        hx-confirm="¿Publicar este evento?"
+                        class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md">
+                    Publicar
+                </button>
+                {% endif %}
+                <button onclick="document.getElementById('edit-mode').classList.toggle('hidden'); document.getElementById('read-mode').classList.toggle('hidden');"
+                        class="px-4 py-2 text-sm font-medium text-neutral-700 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-700 dark:text-neutral-200 rounded-md">
+                    Editar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Event fields -->
+    <div id="read-mode" class="space-y-4">
+        <!-- Title -->
+        {% set label = 'Título' %}{% set value = event.title %}{% set source = 'parser' %}
+        {% include "components/molecules/field_row.html" %}
+
+        <!-- Description -->
+        {% if event.description %}
+        {% set label = 'Descripción' %}{% set value = event.description %}{% set source = 'parser' %}
+        {% include "components/molecules/field_row.html" %}
+        {% endif %}
+
+        <!-- Location -->
+        {% if event.location %}
+        <div class="space-y-2">
+            <h3 class="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Ubicación</h3>
+            {% set label = 'Dirección' %}{% set value = event.location.address %}{% set source = 'parser' %}
+            {% include "components/molecules/field_row.html" %}
+            {% if event.location.neighborhood %}
+            {% set label = 'Barrio' %}{% set value = event.location.neighborhood %}{% set source = 'parser' %}
+            {% include "components/molecules/field_row.html" %}
+            {% endif %}
+            {% if event.location.metro %}
+            {% set label = 'Metro' %}{% set value = event.location.metro %}{% set source = 'parser' %}
+            {% include "components/molecules/field_row.html" %}
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Dates -->
+        <div class="space-y-2">
+            <h3 class="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Fechas</h3>
+            {% if event.start_at %}
+            {% set label = 'Inicio' %}{% set value = event.start_at.strftime('%d/%m/%Y %H:%M') %}{% set source = 'parser' %}
+            {% include "components/molecules/field_row.html" %}
+            {% endif %}
+            {% if event.end_at %}
+            {% set label = 'Fin' %}{% set value = event.end_at.strftime('%d/%m/%Y %H:%M') %}{% set source = 'parser' %}
+            {% include "components/molecules/field_row.html" %}
+            {% endif %}
+        </div>
+
+        <!-- Price -->
+        {% if event.price %}
+        <div class="space-y-2">
+            <h3 class="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Precio</h3>
+            {% if event.price.is_free %}
+            {% set label = 'Precio' %}{% set value = 'Gratis' %}{% set source = 'parser' %}
+            {% else %}
+            {% set label = 'Precio' %}{% set value = "%.2f"|format(event.price.amount_cents / 100) ~ '€' %}{% set source = 'parser' %}
+            {% endif %}
+            {% include "components/molecules/field_row.html" %}
+            {% if event.price.notes %}
+            {% set label = 'Notas precio' %}{% set value = event.price.notes %}{% set source = 'parser' %}
+            {% include "components/molecules/field_row.html" %}
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Ticket -->
+        {% if event.ticket_info and event.ticket_info.url %}
+        <div class="space-y-2">
+            <h3 class="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Entradas</h3>
+            {% set label = 'URL' %}{% set value = '<a href="' ~ event.ticket_info.url ~ '" target="_blank" class="text-teal-600 dark:text-teal-400 hover:underline break-all">' ~ event.ticket_info.url ~ '</a>' %}{% set source = 'parser' %}
+            {% include "components/molecules/field_row.html" %}
+            {% if event.ticket_info.notes %}
+            {% set label = 'Notas' %}{% set value = event.ticket_info.notes %}{% set source = 'parser' %}
+            {% include "components/molecules/field_row.html" %}
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Classification -->
+        <div class="space-y-2">
+            <h3 class="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Clasificación</h3>
+            <div class="flex gap-2">
+                {% if event.is_children_activity %}
+                {% include "components/atoms/badge.html" with variant='purple', text='Infantil' %}
+                {% endif %}
+                {% if event.is_toddler_friendly %}
+                {% include "components/atoms/badge.html" with variant='danger', text='Bebés' %}
+                {% endif %}
+                {% if not event.is_children_activity and not event.is_toddler_friendly %}
+                <span class="text-sm text-neutral-500 dark:text-neutral-400 italic">General</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit mode -->
+    <div id="edit-mode" class="hidden space-y-4">
+        <form hx-post="/admin/events/{{ event.id }}/edit"
+              hx-target="#main-content"
+              hx-swap="innerHTML"
+              class="bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 p-6 space-y-4">
+            <h3 class="text-lg font-semibold text-neutral-900 dark:text-white">Editar evento</h3>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Título</label>
+                    <input type="text" name="title" value="{{ event.title }}"
+                           class="mt-1 block w-full rounded-md border-neutral-300 dark:border-neutral-600 dark:bg-neutral-700 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Inicio</label>
+                    <input type="datetime-local" name="start_at" value="{{ event.start_at.strftime('%Y-%m-%dT%H:%M') if event.start_at else '' }}"
+                           class="mt-1 block w-full rounded-md border-neutral-300 dark:border-neutral-600 dark:bg-neutral-700 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Fin</label>
+                    <input type="datetime-local" name="end_at" value="{{ event.end_at.strftime('%Y-%m-%dT%H:%M') if event.end_at else '' }}"
+                           class="mt-1 block w-full rounded-md border-neutral-300 dark:border-neutral-600 dark:bg-neutral-700 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Dirección</label>
+                    <input type="text" name="address" value="{{ event.location.address if event.location else '' }}"
+                           class="mt-1 block w-full rounded-md border-neutral-300 dark:border-neutral-600 dark:bg-neutral-700 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Barrio</label>
+                    <input type="text" name="neighborhood" value="{{ event.location.neighborhood if event.location else '' }}"
+                           class="mt-1 block w-full rounded-md border-neutral-300 dark:border-neutral-600 dark:bg-neutral-700 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Metro</label>
+                    <input type="text" name="metro" value="{{ event.location.metro if event.location and event.location.metro else '' }}"
+                           class="mt-1 block w-full rounded-md border-neutral-300 dark:border-neutral-600 dark:bg-neutral-700 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Precio (céntimos)</label>
+                    <input type="number" name="price_amount_cents" value="{{ event.price.amount_cents if event.price and event.price.amount_cents else '' }}"
+                           class="mt-1 block w-full rounded-md border-neutral-300 dark:border-neutral-600 dark:bg-neutral-700 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Gratis</label>
+                    <select name="is_free"
+                            class="mt-1 block w-full rounded-md border-neutral-300 dark:border-neutral-600 dark:bg-neutral-700 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                        <option value="true" {% if event.price and event.price.is_free %}selected{% endif %}>Sí</option>
+                        <option value="false" {% if not event.price or not event.price.is_free %}selected{% endif %}>No</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300">URL entradas</label>
+                    <input type="url" name="ticket_url" value="{{ event.ticket_info.url if event.ticket_info and event.ticket_info.url else '' }}"
+                           class="mt-1 block w-full rounded-md border-neutral-300 dark:border-neutral-600 dark:bg-neutral-700 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Infantil</label>
+                    <select name="is_children_activity"
+                            class="mt-1 block w-full rounded-md border-neutral-300 dark:border-neutral-600 dark:bg-neutral-700 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                        <option value="true" {% if event.is_children_activity %}selected{% endif %}>Sí</option>
+                        <option value="false" {% if not event.is_children_activity %}selected{% endif %}>No</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Bebés</label>
+                    <select name="is_toddler_friendly"
+                            class="mt-1 block w-full rounded-md border-neutral-300 dark:border-neutral-600 dark:bg-neutral-700 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                        <option value="true" {% if event.is_toddler_friendly %}selected{% endif %}>Sí</option>
+                        <option value="false" {% if not event.is_toddler_friendly %}selected{% endif %}>No</option>
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Descripción</label>
+                <textarea name="description" rows="3"
+                          class="mt-1 block w-full rounded-md border-neutral-300 dark:border-neutral-600 dark:bg-neutral-700 dark:text-white shadow-sm focus:border-teal-500 focus:ring-teal-500">{{ event.description }}</textarea>
+            </div>
+
+            <div class="flex justify-end gap-2 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+                <button type="button" onclick="document.getElementById('edit-mode').classList.toggle('hidden'); document.getElementById('read-mode').classList.toggle('hidden');"
+                        class="px-4 py-2 text-sm font-medium text-neutral-700 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-700 dark:text-neutral-200 rounded-md">
+                    Cancelar
+                </button>
+                <button type="submit"
+                        class="px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-md">
+                    Guardar cambios
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- RAW section -->
+    <div class="bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 p-6">
+        <h3 class="text-lg font-semibold text-neutral-900 dark:text-white mb-4">Datos RAW vs Parseados</h3>
+        <div class="space-y-4">
+            {% if event.agent_review and event.agent_review.raw_response %}
+            {% set title = 'Respuesta del clasificador (LLM)' %}
+            {% set body_text = event.agent_review.raw_response %}
+            {% include "components/molecules/raw_block.html" %}
+            {% endif %}
+            {% if event.source_url %}
+            <div>
+                <span class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Fuente:</span>
+                <a href="{{ event.source_url }}" target="_blank" class="text-teal-600 dark:text-teal-400 hover:underline break-all ml-1">{{ event.source_url }}</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Metadata -->
+    <div class="bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 p-6">
+        <h3 class="text-lg font-semibold text-neutral-900 dark:text-white mb-4">Metadata</h3>
+        <div class="text-sm text-neutral-600 dark:text-neutral-400 space-y-2">
+            {% if event.extracted_at %}
+            <p><span class="font-medium">Extraído:</span> {{ event.extracted_at.strftime('%d/%m/%Y %H:%M') }}</p>
+            {% endif %}
+            {% if event.created_at %}
+            <p><span class="font-medium">Creado:</span> {{ event.created_at.strftime('%d/%m/%Y %H:%M') }}</p>
+            {% endif %}
+            {% if event.updated_at %}
+            <p><span class="font-medium">Actualizado:</span> {{ event.updated_at.strftime('%d/%m/%Y %H:%M') }}</p>
+            {% endif %}
+            {% if event.content_hash %}
+            <p><span class="font-medium">Content hash:</span> <code class="text-xs bg-neutral-100 dark:bg-neutral-700 px-1 rounded">{{ event.content_hash[:16] }}...</code></p>
+            {% endif %}
+            {% if event.idempotency_key %}
+            <p><span class="font-medium">Idempotency:</span> <code class="text-xs bg-neutral-100 dark:bg-neutral-700 px-1 rounded">{{ event.idempotency_key[:16] }}...</code></p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Audit trail -->
+    <div class="bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 p-6">
+        <h3 class="text-lg font-semibold text-neutral-900 dark:text-white mb-4">Historial</h3>
+        <div id="audit-panel">
+            <button hx-get="/admin/events/{{ event.id }}/audit"
+                    hx-target="#audit-panel"
+                    hx-swap="innerHTML"
+                    class="text-sm text-teal-600 hover:text-teal-700 dark:text-teal-400">
+                Cargar historial
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}

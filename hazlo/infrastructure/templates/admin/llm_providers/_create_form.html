@@ -6,13 +6,17 @@
         <div>
           <label class="block text-sm font-medium text-gray-700">Provider</label>
           <select name="provider_type" required id="provider-type"
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  hx-get="/admin/llm-providers/tier-selector"
+                  hx-target="#tier-selector-container"
+                  hx-trigger="change">
             <option value="">-- Select provider --</option>
             <option value="gemini">Google Gemini</option>
             <option value="openrouter">OpenRouter</option>
             <option value="groq">Groq</option>
           </select>
         </div>
+        <div id="tier-selector-container"></div>
         <div>
           <label class="block text-sm font-medium text-gray-700">API Key</label>
           <div class="flex gap-2">

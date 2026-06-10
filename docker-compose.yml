@@ -26,14 +26,17 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hazlo}:${POSTGRES_PASSWORD:-hazlo}@postgres:5432/${POSTGRES_DB:-hazlo}
-      ADMIN_USER: ${ADMIN_USER:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-hazlo-secret}
+      HAZLO_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hazlo}:${POSTGRES_PASSWORD:-hazlo}@postgres:5432/${POSTGRES_DB:-hazlo}
+      HAZLO_ADMIN_USER: ${HAZLO_ADMIN_USER:-admin}
+      HAZLO_ADMIN_PASSWORD: ${HAZLO_ADMIN_PASSWORD:-hazlo-secret}
       HAZLO_SECRET_KEY: ${HAZLO_SECRET_KEY:-change-me-in-production}
-      PREFECT_API_URL: http://prefect-server:4200/api
-      PREFECT_WORK_POOL_NAME: local-pool
+      HAZLO_PREFECT_API_URL: http://prefect-server:4200/api
+      HAZLO_PREFECT_WORK_POOL_NAME: local-pool
+      HAZLO_RAW_LOCAL_PATH: /data/raw
     ports:
       - "${APP_HOST_PORT:-8000}:8000"
+    volumes:
+      - raw-data:/data/raw
     restart: unless-stopped
     command: fastapi run hazlo/main.py --port 8000 --host 0.0.0.0
     healthcheck:
@@ -103,11 +106,15 @@ services:
       prefect-server:
         condition: service_healthy
     environment:
-      PREFECT_API_URL: http://prefect-server:4200/api
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hazlo}:${POSTGRES_PASSWORD:-hazlo}@postgres:5432/${POSTGRES_DB:-hazlo}
+      HAZLO_PREFECT_API_URL: http://prefect-server:4200/api
+      HAZLO_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hazlo}:${POSTGRES_PASSWORD:-hazlo}@postgres:5432/${POSTGRES_DB:-hazlo}
       HAZLO_SECRET_KEY: ${HAZLO_SECRET_KEY:-change-me-in-production}
+      HAZLO_RAW_LOCAL_PATH: /data/raw
+    volumes:
+      - raw-data:/data/raw
     restart: unless-stopped
 
 volumes:
   postgres_data:
   redis_data:
+  raw-data:

@@ -15,6 +15,7 @@ def _make_provider_model(**overrides: object) -> LLMProviderModel:
         "provider_type": "gemini",
         "model": "gemini-2.0-flash",
         "api_key_encrypted": "encrypted-key-data",
+        "tier": "free",
         "is_active": False,
         "priority": 0,
         "max_calls_per_run": 100,
@@ -34,6 +35,7 @@ def test_provider_dict_return_keys() -> None:
     assert "name" in result
     assert "provider_type" in result
     assert "model" in result
+    assert "tier" in result
     assert "is_active" in result
     assert "priority" in result
     assert "max_calls_per_run" in result

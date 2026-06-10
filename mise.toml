@@ -25,5 +25,5 @@ run = [
     "mise run fmt",
     "mise run lint",
     "mise run typecheck",
-    "mise run test -- tests/domain/ tests/application/ tests/infrastructure/test_rss_adapter.py -v",
+    "mise run test -- tests/domain/ tests/application/ tests/infrastructure/test_rss_adapter.py tests/api/ tests/infrastructure/storage/ -v",
 ]

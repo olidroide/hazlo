@@ -1,0 +1,20 @@
+{# molecule: status_pill — event status badge with correct variant #}
+{# Usage: {% include "components/molecules/status_pill.html" with context %} #}
+{# Required: status (pending|approved|rejected|published) #}
+{% if status == 'pending' %}
+  {% set variant = 'warning' %}
+  {% set text = 'Pending' %}
+{% elif status == 'approved' %}
+  {% set variant = 'success' %}
+  {% set text = 'Approved' %}
+{% elif status == 'rejected' %}
+  {% set variant = 'danger' %}
+  {% set text = 'Rejected' %}
+{% elif status == 'published' %}
+  {% set variant = 'info' %}
+  {% set text = 'Published' %}
+{% else %}
+  {% set variant = 'neutral' %}
+  {% set text = status | capitalize %}
+{% endif %}
+{% include "components/atoms/badge.html" with context %}

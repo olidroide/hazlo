@@ -3,6 +3,13 @@
   <td class="px-6 py-4 whitespace-nowrap">{{ provider.provider_type }}</td>
   <td class="px-6 py-4 whitespace-nowrap">{{ provider.model }}</td>
   <td class="px-6 py-4 whitespace-nowrap">
+    {% if provider.tier == "paid" %}
+      <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Paid</span>
+    {% else %}
+      <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Free</span>
+    {% endif %}
+  </td>
+  <td class="px-6 py-4 whitespace-nowrap">
     <div class="inline-flex items-center gap-2">
     <input
       id="provider-active-{{ provider.id }}"

@@ -85,6 +85,7 @@ async def test_llm_providers_list_hx_request_returns_fragment_not_full_shell() -
         provider_type="gemini",
         model="gemini-2.5-flash",
         api_key_encrypted="enc",
+        tier="free",
         is_active=True,
         priority=0,
         max_calls_per_run=100,

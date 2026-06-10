@@ -5,41 +5,27 @@
         <h3 class="text-sm font-semibold text-neutral-900 dark:text-white line-clamp-2">{{ event.title }}</h3>
         <div class="flex shrink-0 gap-1">
             {% if event.is_expired %}
-            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400" title="Evento caducado">
-                Caducado
-            </span>
+            {% set variant = 'neutral' %}{% set text = 'Caducado' %}{% set title = 'Evento caducado' %}
+            {% include "components/atoms/badge.html" %}
             {% endif %}
             <!-- Confidence badge -->
             {% if event.confidence_score is not none %}
             {% set conf = event.confidence_score %}
             {% if conf >= 0.9 %}
-            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" title="Confidence: {{ "%.0f"|format(conf * 100) }}%">
-                {{ "%.0f"|format(conf * 100) }}%
-            </span>
+            {% set variant = 'success' %}{% set text = "%.0f"|format(conf * 100) ~ '%' %}{% set title = "Confidence: %.0f"|format(conf * 100) ~ '%' %}
             {% elif conf >= 0.7 %}
-            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" title="Confidence: {{ "%.0f"|format(conf * 100) }}%">
-                {{ "%.0f"|format(conf * 100) }}%
-            </span>
+            {% set variant = 'warning' %}{% set text = "%.0f"|format(conf * 100) ~ '%' %}{% set title = "Confidence: %.0f"|format(conf * 100) ~ '%' %}
             {% else %}
-            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" title="Confidence: {{ "%.0f"|format(conf * 100) }}%">
-                {{ "%.0f"|format(conf * 100) }}%
-            </span>
+            {% set variant = 'danger' %}{% set text = "%.0f"|format(conf * 100) ~ '%' %}{% set title = "Confidence: %.0f"|format(conf * 100) ~ '%' %}
             {% endif %}
+            {% include "components/atoms/badge.html" %}
             {% else %}
-            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-400" title="No confidence score">
-                --
-            </span>
+            {% set variant = 'neutral' %}{% set text = '--' %}{% set title = 'No confidence score' %}
+            {% include "components/atoms/badge.html" %}
             {% endif %}
             <!-- Status badge -->
-            {% if event.status == 'pending' %}
-            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">Pending</span>
-            {% elif event.status == 'approved' %}
-            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">Approved</span>
-            {% elif event.status == 'rejected' %}
-            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">Rejected</span>
-            {% elif event.status == 'published' %}
-            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">Published</span>
-            {% endif %}
+            {% set status = event.status %}
+            {% include "components/molecules/status_pill.html" %}
         </div>
     </div>
 
@@ -75,10 +61,12 @@
     <!-- Family badges -->
     <div class="flex space-x-2">
         {% if event.is_children_activity %}
-        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">Infantil</span>
+        {% set variant = 'purple' %}{% set text = 'Infantil' %}
+        {% include "components/atoms/badge.html" %}
         {% endif %}
         {% if event.is_toddler_friendly %}
-        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300">Bebés</span>
+        {% set variant = 'danger' %}{% set text = 'Bebés' %}
+        {% include "components/atoms/badge.html" %}
         {% endif %}
     </div>
 
@@ -129,13 +117,10 @@
 
     <!-- Detail and Audit links -->
     <div class="flex justify-between pt-2 border-t border-neutral-200 dark:border-neutral-700">
-        <button
-            hx-get="/admin/events/{{ event.id }}/detail"
-            hx-target="#detail-panel"
-            hx-swap="innerHTML"
-            class="text-xs text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300 font-medium">
+        <a href="/admin/events/{{ event.id }}"
+           class="text-xs text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300 font-medium">
             Ver detalle
-        </button>
+        </a>
         <button
             hx-get="/admin/events/{{ event.id }}/audit"
             hx-target="#audit-panel"

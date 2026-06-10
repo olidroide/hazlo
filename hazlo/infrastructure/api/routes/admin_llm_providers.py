@@ -24,6 +24,18 @@ router = APIRouter()
 SUPPORTED_PROVIDERS = {"gemini", "openrouter", "groq"}
 
 
+@router.get("/tier-selector")
+async def tier_selector(request: Request, provider_type: str = ""):
+    """Return tier selector HTML for Gemini providers."""
+    if provider_type != "gemini":
+        return Response(content="")
+    return request.state.templates.TemplateResponse(
+        request,
+        "admin/llm_providers/_tier_selector.html",
+        {},
+    )
+
+
 @dataclass
 class ModelInfo:
     id: str
@@ -106,9 +118,14 @@ async def _list_models(provider_type: str, api_key: str) -> list[ModelInfo]:
     raise ValueError(f"Unknown provider type: {provider_type}")
 
 
-async def _test_connection(provider_type: str, api_key: str, model_name: str) -> bool:
+async def _test_connection(provider_type: str, api_key: str, model_name: str, tier: str = "free") -> bool:
     if provider_type == "gemini":
-        provider = GoogleProvider(api_key=api_key)
+        if tier == "paid":
+            from pydantic_ai.providers.google_cloud import GoogleCloudProvider
+
+            provider = GoogleCloudProvider(api_key=api_key)
+        else:
+            provider = GoogleProvider(api_key=api_key)
         model = GoogleModel(model_name, provider=provider)
     elif provider_type == "openrouter":
         provider = OpenRouterProvider(api_key=api_key)
@@ -132,6 +149,7 @@ def _provider_dict(model) -> dict:
         "name": model.name,
         "provider_type": model.provider_type,
         "model": model.model,
+        "tier": getattr(model, "tier", "free"),
         "is_active": model.is_active,
         "priority": model.priority,
         "max_calls_per_run": model.max_calls_per_run,
@@ -204,11 +222,12 @@ async def create_provider(
     provider_type: str = Form(...),
     model: str = Form(...),
     api_key: str = Form(...),
+    tier: str = Form("free"),
     priority: int = Form(0),
     repo: LLMProviderRepository = Depends(get_llm_provider_repo),
 ):
     settings = get_settings()
-    if not settings.hazlo_secret_key:
+    if not settings.secret_key:
         raise HTTPException(status_code=500, detail="HAZLO_SECRET_KEY not configured")
 
     if provider_type not in SUPPORTED_PROVIDERS:
@@ -216,13 +235,14 @@ async def create_provider(
 
     from hazlo.infrastructure.db.models import LLMProviderModel
 
-    encrypted_key = encrypt_value(api_key, settings.hazlo_secret_key)
+    encrypted_key = encrypt_value(api_key, settings.secret_key)
     provider = LLMProviderModel(
         id=uuid.uuid4(),
         name=name,
         provider_type=provider_type,
         model=model,
         api_key_encrypted=encrypted_key,
+        tier=tier if provider_type == "gemini" else "free",
         priority=priority,
     )
     await repo.save(provider)
@@ -240,7 +260,7 @@ async def test_provider_connection(
     repo: LLMProviderRepository = Depends(get_llm_provider_repo),
 ):
     settings = get_settings()
-    if not settings.hazlo_secret_key:
+    if not settings.secret_key:
         raise HTTPException(status_code=500, detail="HAZLO_SECRET_KEY not configured")
 
     model = await repo.get(provider_id)
@@ -249,10 +269,10 @@ async def test_provider_connection(
 
     logger.info("Testing connection for provider=%s type=%s model=%s", model.name, model.provider_type, model.model)
 
-    api_key = decrypt_value(model.api_key_encrypted, settings.hazlo_secret_key)
+    api_key = decrypt_value(model.api_key_encrypted, settings.secret_key)
 
     try:
-        success = await _test_connection(model.provider_type, api_key, model.model)
+        success = await _test_connection(model.provider_type, api_key, model.model, getattr(model, "tier", "free"))
         logger.info("Test connection result for %s: success=%s", model.name, success)
     except Exception as exc:
         logger.exception("Provider test connection failed for %s", model.name)

@@ -20,13 +20,19 @@ async def build_pydantic_model(provider, api_key: str) -> Model | None:
     from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
     from pydantic_ai.models.openrouter import OpenRouterModel
     from pydantic_ai.providers.google import GoogleProvider
+    from pydantic_ai.providers.google_cloud import GoogleCloudProvider
     from pydantic_ai.providers.openrouter import OpenRouterProvider
 
     match provider.provider_type:
         case "gemini":
+            tier = getattr(provider, "tier", "free")
+            if tier == "paid":
+                provider_instance = GoogleCloudProvider(api_key=api_key)
+            else:
+                provider_instance = GoogleProvider(api_key=api_key)
             return GoogleModel(
                 provider.model,
-                provider=GoogleProvider(api_key=api_key),
+                provider=provider_instance,
                 settings=GoogleModelSettings(temperature=0.0, max_tokens=500),
             )
         case "openrouter":
@@ -90,7 +96,7 @@ async def build_llm_infrastructure(
             None,
         )
 
-    if not settings.hazlo_secret_key:
+    if not settings.secret_key:
         logger.warning("No HAZLO_SECRET_KEY set, cannot decrypt provider credentials")
         return (
             None,
@@ -103,7 +109,7 @@ async def build_llm_infrastructure(
 
     # Primary model (first active provider by priority)
     primary_provider = active_providers[0]
-    api_key = decrypt_value(primary_provider.api_key_encrypted, settings.hazlo_secret_key)
+    api_key = decrypt_value(primary_provider.api_key_encrypted, settings.secret_key)
     model = await build_pydantic_model(primary_provider, api_key)
     if model:
         logger.info("Loaded primary LLM: %s (%s)", primary_provider.model, primary_provider.provider_type)
@@ -120,7 +126,7 @@ async def build_llm_infrastructure(
     )
 
     for fp in fallback_providers_sorted:
-        fp_api_key = decrypt_value(fp.api_key_encrypted, settings.hazlo_secret_key)
+        fp_api_key = decrypt_value(fp.api_key_encrypted, settings.secret_key)
         fp_model = await build_pydantic_model(fp, fp_api_key)
         if fp_model:
             supports_tools = _supports_tool_calling(fp.provider_type, fp.model)

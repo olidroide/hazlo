@@ -9,6 +9,7 @@ from hazlo.application.use_cases.review_event import InvalidTransitionError, Rev
 from hazlo.domain.event import EventStatus
 from hazlo.infrastructure.api.deps import get_base, get_event_repo, get_review_repo
 from hazlo.infrastructure.db.repositories import EventRepository, ReviewRepository
+from hazlo.settings import get_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -263,4 +264,184 @@ async def enrich_event(
         request,
         "admin/events/_event_card.html",
         {"event": _event_to_dict(enriched)},
+    )
+
+
+@router.get("/{event_id}")
+async def get_event_detail_page(
+    request: Request,
+    event_id: uuid.UUID,
+    event_repo: EventRepository = Depends(get_event_repo),
+):
+    """Full event detail page."""
+    event = await event_repo.get(event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    return request.state.templates.TemplateResponse(
+        request,
+        "admin/events/event_detail.html",
+        {
+            "event": _event_to_dict(event),
+            "base": get_base(request),
+            "unified_reparse": get_settings().unified_reparse,
+        },
+    )
+
+
+@router.post("/{event_id}/edit")
+async def edit_event(
+    request: Request,
+    event_id: uuid.UUID,
+    title: str = Form(default=""),
+    description: str = Form(default=""),
+    address: str = Form(default=""),
+    neighborhood: str = Form(default=""),
+    metro: str = Form(default=""),
+    start_at: str = Form(default=""),
+    end_at: str = Form(default=""),
+    price_amount_cents: str = Form(default=""),
+    is_free: str = Form(default="false"),
+    price_notes: str = Form(default=""),
+    ticket_url: str = Form(default=""),
+    ticket_notes: str = Form(default=""),
+    is_children_activity: str = Form(default="false"),
+    is_toddler_friendly: str = Form(default="false"),
+    event_repo: EventRepository = Depends(get_event_repo),
+):
+    """Save manual event edits."""
+    from datetime import datetime as dt
+
+    from hazlo.application.use_cases.edit_event import EditEvent, EditEventCommand
+
+    event = await event_repo.get(event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    command = EditEventCommand(
+        title=title or None,
+        description=description or None,
+        address=address or None,
+        neighborhood=neighborhood or None,
+        metro=metro or None,
+        start_at=dt.fromisoformat(start_at) if start_at else None,
+        end_at=dt.fromisoformat(end_at) if end_at else None,
+        price_amount_cents=int(price_amount_cents) if price_amount_cents else None,
+        is_free=is_free == "true",
+        price_notes=price_notes or None,
+        ticket_url=ticket_url or None,
+        ticket_notes=ticket_notes or None,
+        is_children_activity=is_children_activity == "true",
+        is_toddler_friendly=is_toddler_friendly == "true",
+    )
+
+    use_case = EditEvent()
+    result = use_case.execute(event, command)
+    await event_repo.save_with_review(result.event, result.review)
+
+    logger.info("Event %s edited: %s", event_id, result.fields_changed)
+    return request.state.templates.TemplateResponse(
+        request,
+        "admin/events/event_detail.html",
+        {
+            "event": _event_to_dict(result.event),
+            "base": get_base(request),
+            "edit_success": True,
+            "unified_reparse": get_settings().unified_reparse,
+        },
+    )
+
+
+@router.post("/{event_id}/reparse")
+async def reparse_event(
+    request: Request,
+    event_id: uuid.UUID,
+    event_repo: EventRepository = Depends(get_event_repo),
+):
+    """Reparse event from stored RAW using unified LLM agent."""
+    from hazlo.application.use_cases.reparse_event import RawDocForReparse, ReparseEvent
+    from hazlo.infrastructure.api.middleware.rate_limiter import reparse_limiter
+    from hazlo.infrastructure.db.session import async_session_factory
+    from hazlo.infrastructure.llm.factory import build_llm_infrastructure
+    from hazlo.infrastructure.storage.factory import build_raw_document_store
+
+    event = await event_repo.get(event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    settings = get_settings()
+    if not settings.unified_reparse:
+        raise HTTPException(status_code=403, detail="Unified reparse is disabled")
+
+    reparse_limiter.check("admin", event_id)
+
+    async with async_session_factory() as session:
+        _, _, _, _ = await build_llm_infrastructure(session)
+        store = build_raw_document_store(settings)
+
+    if not store.exists(event_id):
+        logger.warning("No RAW document for event %s", event_id)
+        return request.state.templates.TemplateResponse(
+            request,
+            "admin/events/event_detail.html",
+            {
+                "event": _event_to_dict(event),
+                "base": get_base(request),
+                "reparse_error": "No RAW document found",
+                "unified_reparse": settings.unified_reparse,
+            },
+        )
+
+    raw_doc = store.read(event_id)
+    raw_doc_for_reparse = RawDocForReparse(
+        payload=raw_doc.payload,
+        body=raw_doc.body if isinstance(raw_doc.body, bytes) else raw_doc.body.encode("utf-8"),
+    )
+
+    from hazlo.infrastructure.llm.agents.reparse_event import ReparseEventAgent
+    from hazlo.infrastructure.llm.factory import build_llm_infrastructure
+
+    async with async_session_factory() as session:
+        classifier, _, _, _ = await build_llm_infrastructure(session)
+
+    if classifier is None:
+        logger.warning("No LLM provider for reparse event %s", event_id)
+        return request.state.templates.TemplateResponse(
+            request,
+            "admin/events/event_detail.html",
+            {
+                "event": _event_to_dict(event),
+                "base": get_base(request),
+                "reparse_error": "No LLM provider configured",
+                "unified_reparse": settings.unified_reparse,
+            },
+        )
+
+    from typing import cast
+
+    from pydantic_ai.models import Model
+
+    model = cast(Model, classifier._agent._model)
+    agent = ReparseEventAgent(model, retries=1)
+
+    class _RawStore:
+        def read(self, event_id: uuid.UUID) -> RawDocForReparse:
+            return raw_doc_for_reparse
+
+    use_case = ReparseEvent(agent=agent, raw_store=_RawStore())
+
+    result = await use_case.execute(event)
+    await event_repo.save_with_review(result.event, result.review)
+
+    logger.info("Event %s reparsed: %s", event_id, result.fields_changed)
+    return request.state.templates.TemplateResponse(
+        request,
+        "admin/events/event_detail.html",
+        {
+            "event": _event_to_dict(result.event),
+            "base": get_base(request),
+            "reparse_success": True,
+            "reparse_reasoning": result.reasoning,
+            "unified_reparse": settings.unified_reparse,
+        },
     )

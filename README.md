@@ -42,6 +42,9 @@ and human editorial judgment.
 ## Key Features
 
 - **Multi-source ingestion** — RSS adapter implemented; Web and Email stubs planned
+- **Two-phase ingestion** — Fetch RAW once, parse/reparse from stored data without re-fetching
+- **Unified event reparse** — AI re-parse events from stored RAW with field-level confidence scores
+- **Manual event editing** — Edit event fields directly with audit trail and diff tracking
 - **Source administration panel** — Add, verify, configure, and trigger extractions on demand
 - **Event normalization** — All sources mapped to a common data model
 - **Event enrichment** — Auto-classify children's activities and toddler-friendly events via LLM
@@ -51,6 +54,8 @@ and human editorial judgment.
 - **Full traceability** — Track extraction origin, timestamps, and manual review changes
 - **Scheduled ingestion** — Prefect-powered per-source deployments using each source capture interval
 - **SSE test integration** — Real-time log streaming for source pipeline testing
+- **CSRF protection** — All admin POST/PATCH/DELETE endpoints protected with CSRF tokens
+- **Rate limiting** — Reparse endpoint rate-limited (5/min per event, 30/hour per admin)
 
 ## Architecture
 
@@ -82,6 +87,9 @@ hazlo/
 │   │       ├── admin_sources.py
 │   │       ├── admin_events.py
 │   │       └── admin_llm_providers.py
+│   │   └── middleware/
+│   │       ├── csrf.py         # CSRF protection for admin endpoints
+│   │       └── rate_limiter.py # Rate limiting for reparse endpoint
 │   ├── db/                     # SQLAlchemy models + repositories
 │   ├── llm/                    # pydantic-ai agents + factory + prompts
 │   │   ├── factory.py          # Build LLM infrastructure (fallback chain)
@@ -89,10 +97,17 @@ hazlo/
 │   │   └── agents/
 │   │       ├── quality_classifier.py
 │   │       ├── location_enrichment.py
-│   │       └── date_parser.py
-│   ├── prefect/                # Scheduled flows + per-source deployments
-│   └── templates/              # Jinja2 + HTMX templates
-├── static/                     # Tailwind CSS (input.css + compiled output.css)
+│   │       └── reparse_event.py # Unified reparse agent
+│   ├── storage/                # RAW document storage
+│   │   ├── local_filesystem.py # Local filesystem implementation
+│   │   └── factory.py          # Storage backend factory
+│   ├── prefect/                # Scheduled flows + deployments
+│   │   └── flows/
+│   │       ├── ingest_raw.py   # Phase 1: fetch + persist RAW
+│   │       └── parse_raw.py    # Phase 2: read RAW + normalize + enrich + save
+│   ├── templates/              # Jinja2 + HTMX templates
+│   │   └── components/         # Atomic Design components (atoms, molecules, macros)
+│   └── static/                 # CSS, JS, images
 └── main.py                     # FastAPI app entry point
 ```
 

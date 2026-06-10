@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,7 @@ from hazlo.infrastructure.db.models import (
     EventModel,
     ExtractionRunModel,
     LLMProviderModel,
+    RawDocumentModel,
     ReviewModel,
     SourceModel,
     event_to_model,
@@ -346,6 +348,79 @@ class LLMProviderRepository:
 
     async def delete(self, provider_id: uuid.UUID) -> bool:
         result = await self._session.execute(select(LLMProviderModel).where(LLMProviderModel.id == provider_id))
+        model = result.scalar_one_or_none()
+        if model is None:
+            return False
+        await self._session.delete(model)
+        await self._session.commit()
+        return True
+
+
+class RawDocumentRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create(
+        self,
+        *,
+        event_id: uuid.UUID,
+        storage_backend: str,
+        storage_uri: str,
+        content_type: str,
+        content_hash: str,
+        byte_size: int,
+        fetched_at: datetime,
+        source_url: str,
+        adapter: str,
+    ) -> RawDocumentModel:
+        model = RawDocumentModel(
+            id=uuid.uuid4(),
+            event_id=event_id,
+            storage_backend=storage_backend,
+            storage_uri=storage_uri,
+            content_type=content_type,
+            content_hash=content_hash,
+            byte_size=byte_size,
+            fetched_at=fetched_at,
+            source_url=source_url,
+            adapter=adapter,
+        )
+        self._session.add(model)
+        await self._session.commit()
+        await self._session.refresh(model)
+        return model
+
+    async def get(self, event_id: uuid.UUID) -> RawDocumentModel | None:
+        result = await self._session.execute(select(RawDocumentModel).where(RawDocumentModel.event_id == event_id))
+        return result.scalar_one_or_none()
+
+    async def list_pending(self, *, limit: int = 50) -> list[RawDocumentModel]:
+        result = await self._session.execute(
+            select(RawDocumentModel)
+            .where(RawDocumentModel.status == "pending")
+            .order_by(RawDocumentModel.fetched_at.asc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def mark_parsed(self, raw_document_id: uuid.UUID) -> RawDocumentModel | None:
+        from hazlo.infrastructure.db.models import _utcnow
+
+        stmt = (
+            update(RawDocumentModel)
+            .where(RawDocumentModel.id == raw_document_id)
+            .values(status="parsed", parsed_at=_utcnow())
+            .returning(RawDocumentModel)
+        )
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        await self._session.commit()
+        return model
+
+    async def delete_by_event_id(self, event_id: uuid.UUID) -> bool:
+        result = await self._session.execute(select(RawDocumentModel).where(RawDocumentModel.event_id == event_id))
         model = result.scalar_one_or_none()
         if model is None:
             return False

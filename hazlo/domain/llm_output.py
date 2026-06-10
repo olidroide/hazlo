@@ -46,3 +46,25 @@ class ClassificationResult:
     is_toddler_friendly: bool
     confidence: float
     raw_response: str
+
+
+class ReparseEventOutput(BaseModel):
+    title: str
+    description: str | None = None
+    address: str
+    neighborhood: str
+    metro: str | None = None
+    start_at: str | None = None
+    end_at: str | None = None
+    price_amount_cents: int | None = None
+    is_free: bool
+    price_notes: str | None = None
+    ticket_url: str | None = None
+    ticket_notes: str | None = None
+    is_children_activity: bool
+    is_toddler_friendly: bool
+    confidence: float = Field(ge=0.0, le=1.0)
+    field_confidence: dict[str, float] = Field(
+        description="Confidence per field: title, description, location, dates, price, ticket, classification"
+    )
+    reasoning: str = Field(description="Brief explanation of what changed and why")

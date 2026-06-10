@@ -11,6 +11,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Two-phase ingestion (unified reparse)**: Split monolithic ingestion into `ingest_raw` (fetch + persist RAW to filesystem) and `parse_raw` (read stored RAW + normalize + enrich + save). Enables reparse from stored RAW without re-fetching source. Behind feature flag `HAZLO_UNIFIED_REPARSE`.
+- **RAW filesystem storage**: `RawDocumentStore` protocol + `LocalFilesystemStore` implementation. Atomic writes (`.tmp` → rename + `fsync`), flat layout `{event_id}.raw.json`. Configurable for S3/R2 via `HAZLO_RAW_STORAGE_BACKEND`. Docker volume `raw-data` mounted at `/data/raw` for hazlo + prefect-worker.
+- **Raw documents table**: Migration `e79067f213b6` adds `raw_documents` table (metadata-only: `event_id` FK, `content_hash`, `storage_uri`, `fetched_at`, `parsed_at`). Actual RAW data lives in filesystem.
+- **ReparseEventAgent**: Unified LLM agent for reparsing events from stored RAW. Takes `raw_payload`, `raw_body`, `existing_event` → returns `ReparseEventOutput` with `field_confidence` dict. Uses pydantic-ai structured output.
+- **ReparseEvent + EditEvent use cases**: `ReparseEvent` reads RAW, calls agent, computes delta, updates event + audit. `EditEvent` validates manual field changes, updates event + audit.
+- **CSRF middleware**: Blocks all POST/PATCH/DELETE to `/admin/*` without valid token. Token via `X-CSRF-Token` header or form field `csrf_token`. Test fixture `_disable_csrf` for compatibility.
+- **Rate limiter**: `RateLimiter` with sliding window. `reparse_limiter`: 5 calls/min per event, 30/hour per admin.
+- **Event detail page (full)**: `event_detail.html` with read/edit modes, RAW section (collapsible), metadata, audit trail. Uses Atomic Design components. Routes: `GET /{id}`, `POST /{id}/edit`, `POST /{id}/reparse`.
+- **Atomic Design components**: `components/` hierarchy — atoms (badge, confidence_bar, status_pill), molecules (field_row, raw_block), macros (reusable Jinja2 macros). Promotion rule: used ≥3 times.
 - **Per-source Prefect deployment manager**: Added `source_deployment_manager.py` to reconcile one deployment per source (`source-{source_id}`), update interval schedules from `fetch_interval_minutes`, pause deployments when sources are inactive, delete deployments when sources are removed, and trigger `run-now` flow runs through Prefect API.
 - **Source delete endpoint**: Added `DELETE /admin/sources/{id}` and UI action to remove a source and its Prefect deployment.
 

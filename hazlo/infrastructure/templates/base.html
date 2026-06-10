@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ request.state.csrf_token }}">
     <title>{% block title %}Hazlo Admin{% endblock %}</title>
     <link rel="stylesheet" href="{{ static_url('css/output.css') }}" onerror="this.remove(); window.__tailwind_cdn=true;">
     <script>if(window.__tailwind_cdn){document.write('<script src="https://cdn.tailwindcss.com"><\/script>');}</script>
@@ -109,6 +110,10 @@
                 localStorage.setItem('dark-mode', document.documentElement.classList.contains('dark'));
             });
 
+            document.body.addEventListener('htmx:configRequest', function(evt) {
+                var token = document.querySelector('meta[name="csrf-token"]');
+                if (token) evt.detail.headers['X-CSRF-Token'] = token.content;
+            });
             document.body.addEventListener('htmx:beforeRequest', function(evt) {
                 var btn = evt.target.closest('button, a');
                 if (btn) {

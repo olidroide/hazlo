@@ -22,6 +22,7 @@ def _make_provider_model(**overrides: object) -> LLMProviderModel:
         "provider_type": "gemini",
         "model": "gemini-2.0-flash",
         "api_key_encrypted": "gAAAAABfake==",
+        "tier": "free",
         "is_active": False,
         "priority": 0,
         "max_calls_per_run": 100,

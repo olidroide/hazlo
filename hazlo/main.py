@@ -16,9 +16,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response
 
 from alembic import command
+from hazlo.infrastructure.api.middleware.csrf import CSRFMiddleware, generate_csrf_token
 from hazlo.infrastructure.api.routes import admin_events, admin_llm_providers, admin_sources
 from hazlo.settings import get_settings
 
@@ -100,6 +102,10 @@ class TemplateMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request.state.templates = templates
         session = request.scope.get("session", {})
+        if "csrf_token" not in session:
+            session["csrf_token"] = generate_csrf_token()
+            request.scope["session"] = session
+        request.state.csrf_token = session["csrf_token"]
         request.state.flash_messages = session.get("flash_messages", [])
         response = await call_next(request)
         return response
@@ -112,8 +118,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(BasicAuthMiddleware)
+settings = get_settings()
+app.add_middleware(SessionMiddleware, secret_key=settings.secret_key or "dev-insecure")
 app.add_middleware(TemplateMiddleware)
+app.add_middleware(CSRFMiddleware)
+app.add_middleware(BasicAuthMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
 app.include_router(admin_sources.router, prefix="/admin/sources", tags=["admin-sources"])

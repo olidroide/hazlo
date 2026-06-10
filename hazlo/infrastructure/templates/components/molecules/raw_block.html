@@ -1,0 +1,12 @@
+{# molecule: raw_block — escaped raw content viewer #}
+{# Usage: {% include "components/molecules/raw_block.html" with context %} #}
+{# Required: title, body_text (already escaped or will be escaped) #}
+{# Optional: language (json|xml|html|text) #}
+<details class="border border-neutral-200 dark:border-neutral-700 rounded-md">
+  <summary class="px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-300 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-md">
+    {{ title }}
+  </summary>
+  <div class="p-3 bg-neutral-50 dark:bg-neutral-900 rounded-b-md overflow-x-auto">
+    <pre class="text-xs font-mono text-neutral-800 dark:text-neutral-200 whitespace-pre-wrap break-all">{{ body_text | e }}</pre>
+  </div>
+</details>

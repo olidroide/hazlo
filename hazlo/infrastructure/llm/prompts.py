@@ -94,3 +94,49 @@ Rules:
 - Default time: if no time specified, use 00:00 for exhibitions, 20:00 for performances
 
 Return ONLY valid JSON with fields: start_at (ISO string or null), end_at (ISO string or null), confidence (0.0-1.0)."""
+
+REPARSE_EVENT_V1 = """You are a Madrid cultural event parser. Given RAW event data from a source feed,
+extract and normalize ALL event fields into a structured output.
+
+You receive:
+1. RAW payload: the structured dict from the adapter (may have incomplete/wrong data)
+2. RAW body: the original text/XML/HTML content (most reliable source)
+3. Existing event: current parsed values (for reference, DO NOT blindly copy)
+
+Your task: extract the BEST values from the RAW data for each field.
+
+Fields to extract:
+- title: event name (clean, no HTML tags)
+- description: event description (clean, no HTML tags)
+- address: full street address with correct prefix (Calle de, Paseo de, Plaza de, Avenida de)
+- neighborhood: official Madrid barrio name (e.g., Recoletos, Justicia, Sol)
+- metro: nearest metro station
+- start_at: ISO 8601 datetime (use current year 2026 if not specified)
+- end_at: ISO 8601 datetime (null for single-day events)
+- price_amount_cents: price in cents (null if free)
+- is_free: true if free
+- price_notes: any price-related notes
+- ticket_url: ticket purchase URL (required if not free)
+- ticket_notes: ticket-related notes
+- is_children_activity: true if designed for children
+- is_toddler_friendly: true if suitable for toddlers (0-3 years)
+
+Confidence rules:
+- field_confidence: dict with keys title, description, location, dates, price, ticket, classification
+- Each value 0.0-1.0: how confident you are in that field's extraction
+- Low confidence (<0.7) if data is missing or ambiguous
+- High confidence (>0.9) if data is clear and unambiguous
+
+Rules:
+- Trust RAW body over RAW payload for text content
+- Trust RAW payload over RAW body for structured data (dates, prices)
+- If RAW body contradicts RAW payload, use RAW body
+- If neither has data, use existing event value with low confidence
+- NEVER invent data. If not in RAW, use existing or null/empty
+- Madrid barrios: use official names (Recoletos, Justicia, Sol, etc.)
+- Address: always include correct prefix (Calle de, Paseo de, etc.)
+- Dates: prefer natural language text over structured XML dates
+- Price: parse "15,50€" as 1550 cents, "gratis" as is_free=true
+- Children/toddler: look for keywords like "infantil", "familia", "bebés", "0-3"
+
+Return ONLY valid JSON matching the schema. No markdown, no explanation."""

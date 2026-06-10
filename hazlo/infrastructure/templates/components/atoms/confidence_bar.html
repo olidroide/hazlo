@@ -1,0 +1,17 @@
+{# atom: confidence_bar — thin progress bar + percentage #}
+{# Usage: {% include "components/atoms/confidence_bar.html" with context %} #}
+{# Required: confidence (0.0-1.0) #}
+{% set pct = (confidence * 100)|int %}
+{% if confidence >= 0.9 %}
+  {% set bar_color = "bg-green-500" %}
+{% elif confidence >= 0.7 %}
+  {% set bar_color = "bg-amber-500" %}
+{% else %}
+  {% set bar_color = "bg-red-500" %}
+{% endif %}
+<div class="flex items-center gap-2 shrink-0">
+  <div class="w-16 bg-neutral-200 dark:bg-neutral-700 rounded-full h-1.5">
+    <div class="h-1.5 rounded-full {{ bar_color }}" style="width: {{ pct }}%"></div>
+  </div>
+  <span class="text-xs text-neutral-500 dark:text-neutral-400">{{ pct }}%</span>
+</div>

@@ -160,11 +160,13 @@ See `docs/agentic-system.md` → "LLM Evaluation" section.
 | POST | `/admin/sources/{id}/run-now` | `run_source_now` | HTML row (HTMX), triggers Prefect flow run |
 | DELETE | `/admin/sources/{id}` | `delete_source` | Empty 200, deletes source + Prefect deployment |
 | GET | `/admin/events/` | `list_events` | HTML event list (`?status=`) |
-| GET | `/admin/events/{id}` | `get_event` | HTML event card |
-| GET | `/admin/events/{id}/detail` | `get_event_detail` | HTML event detail |
+| GET | `/admin/events/{id}` | `get_event_detail_page` | HTML full event detail page |
+| GET | `/admin/events/{id}/detail` | `get_event_detail` | HTML event detail (legacy, sidebar) |
 | PATCH | `/admin/events/{id}/review` | `review_event` | HTML event card |
 | GET | `/admin/events/{id}/audit` | `get_event_audit` | HTML audit trail |
 | POST | `/admin/events/{id}/enrich` | `enrich_event` | HTML event card (LLM enrichment) |
+| POST | `/admin/events/{id}/edit` | `edit_event` | HTML full event detail page (manual edit) |
+| POST | `/admin/events/{id}/reparse` | `reparse_event` | HTML full event detail page (unified LLM reparse) |
 | GET | `/admin/llm-providers/` | `list_llm_providers` | HTML LLM provider list |
 | GET | `/admin/llm-providers/_new` | `new_provider_form` | HTML create form |
 | POST | `/admin/llm-providers/models` | `list_provider_models` | HTML model list |
@@ -306,6 +308,125 @@ Emergency bypass: `git commit --no-verify` (requires justification in commit mes
 **Bug pattern:** Using `add()` on an entity that already exists → `IntegrityError` on commit.
 **Fix:** Use `merge()` for any entity that might be re-saved with the same primary key.
 
+## Two-Phase Ingestion (Unified Reparse)
+
+### Architecture
+
+Two separate Prefect flows replace the monolithic ingestion pipeline for reparse scenarios:
+
+```
+Phase 1: ingest_raw  →  fetch RAW (payload + body)  →  persist to filesystem
+Phase 2: parse_raw   →  read stored RAW  →  normalize  →  enrich  →  save to DB
+```
+
+**Why two phases:**
+- RAW data stored once, re-parseable without re-fetching source
+- Enables manual edit + AI reparse from same RAW snapshot
+- Decouples fetch failures from parse failures
+- Future: can reparse with improved prompts without hitting source again
+
+### RAW Storage
+
+**Protocol:** `RawDocumentStore` (`hazlo/domain/ports/raw_document_store.py`)
+- `write(event_id, content) → str` (returns URI)
+- `read(event_id) → bytes`
+- `exists(event_id) → bool`
+- `delete(event_id) → None`
+- `get_uri(event_id) → str`
+
+**Implementation:** `LocalFilesystemStore` (`hazlo/infrastructure/storage/local_filesystem.py`)
+- Atomic write: `.tmp` file → `os.rename()` with `os.fsync()`
+- Flat layout: `{raw_local_path}/{event_id}.raw.json`
+- File content: JSON with `raw_payload`, `raw_body`, `fetched_at`, `content_hash`
+
+**Factory:** `build_raw_document_store(settings)` → returns `LocalFilesystemStore` by default
+- Configurable for S3/R2 via `HAZLO_RAW_STORAGE_BACKEND` setting
+- `HAZLO_RAW_LOCAL_PATH` defaults to `./data/raw`
+
+### Database: `raw_documents` Table
+
+Metadata-only table (`alembic/versions/e79067f213b6_add_raw_documents_table.py`):
+- `id` (UUID PK), `event_id` (FK → events.id ON DELETE CASCADE)
+- `content_hash` (SHA-256 of raw content), `fetched_at` (UTC)
+- `storage_uri` (filesystem path or S3 key), `parsed_at` (nullable)
+- `created_at`, `updated_at`
+
+Actual RAW data lives in filesystem, not DB. `RawDocumentModel` is metadata + FK.
+
+### Reparse Flow
+
+1. Admin clicks "Reparse" on event detail page → `POST /admin/events/{id}/reparse`
+2. CSRF validation + rate limit check (5/min per event, 30/hour per admin)
+3. `ReparseEvent` use case:
+   - Reads RAW from filesystem via `RawDocumentStore`
+   - Calls `ReparseEventAgent` with `raw_payload`, `raw_body`, `existing_event`
+   - Agent returns `ReparseEventOutput` with `field_confidence` dict
+   - Computes delta between existing event and new parsed data
+   - Updates event fields, creates `Review` audit record
+4. Returns updated event detail page with changes highlighted
+
+### Edit Flow
+
+1. Admin clicks "Edit" on event detail page → switches to edit mode
+2. Manual field changes → `POST /admin/events/{id}/edit`
+3. `EditEvent` use case with `EditEventCommand`:
+   - Validates field changes
+   - Updates event, creates `Review` audit record with diff
+4. Returns updated event detail page
+
+### LLM Agent: `ReparseEventAgent`
+
+- Unified prompt (`REPARSE_EVENT_V1`) takes raw payload + body + existing event
+- Returns `ReparseEventOutput` with all event fields + `field_confidence` dict
+- `field_confidence` maps field name → confidence score (0.0-1.0)
+- Uses pydantic-ai structured output (`output_type=ReparseEventOutput`)
+- Behind feature flag `HAZLO_UNIFIED_REPARSE` (default `false`)
+
+### Event Detail Page
+
+**Template:** `hazlo/infrastructure/templates/admin/events/event_detail.html`
+- Two modes: read mode (default) + edit mode (after clicking "Edit")
+- Sections: metadata header, event fields (editable in edit mode), RAW section (collapsible), audit trail
+- Uses Atomic Design components from `components/`
+- CSRF token in edit/reparse forms
+- Rate limit error shown if reparse limit exceeded
+
+### Components (`hazlo/infrastructure/templates/components/`)
+
+Atomic Design hierarchy: atoms → molecules → macros
+
+**Atoms:**
+- `badge/status.html` — status badge with color (pending/approved/rejected/published)
+- `badge/confidence.html` — confidence badge (high/medium/low)
+- `confidence_bar.html` — visual confidence bar (0-100%)
+- `status_pill.html` — compact status indicator
+
+**Molecules:**
+- `field_row.html` — label + value pair (editable in edit mode)
+- `raw_block.html` — collapsible RAW JSON viewer with syntax highlighting
+
+**Macros:**
+- `macros.html` — reusable Jinja2 macros for common patterns
+
+**Promotion rule:** component promoted to `components/` when used ≥3 times across templates.
+
+### CSRF Middleware
+
+**File:** `hazlo/infrastructure/api/middleware/csrf.py`
+- Blocks all POST/PATCH/DELETE to `/admin/*` without valid CSRF token
+- Token checked via `X-CSRF-Token` header or form field `csrf_token`
+- Token bound to session, validated against secret key
+- `generate_csrf_token(session, secret_key)` → token string
+- Test fixture `_disable_csrf` removes middleware from `app.user_middleware` for existing tests
+
+### Rate Limiter
+
+**File:** `hazlo/infrastructure/api/middleware/rate_limiter.py`
+- `RateLimiter` class with sliding window
+- `reparse_limiter` instance: 5 calls/min per event, 30/hour per admin
+- In-memory dict keyed by `(user_id, event_id)` with timestamps
+- Raises `RateLimitExceeded` when limit hit
+
 ## Prefect Flows
 
 | Flow | Schedule | File |
@@ -356,6 +477,9 @@ await client.create_deployment(
 | `PREFECT_INGEST_FLOW_TIMEOUT_SECONDS` | `1500` | Prefect flow timeout (seconds) |
 | `PREFECT_FETCH_SOURCE_TASK_TIMEOUT_SECONDS` | `1200` | Prefect task timeout (seconds) |
 | `RSS_MAX_RESULTS` | `30` | Max results per RSS fetch |
+| `HAZLO_RAW_STORAGE_BACKEND` | `local` | RAW storage backend (`local` or `s3`) |
+| `HAZLO_RAW_LOCAL_PATH` | `./data/raw` | Local filesystem path for RAW storage |
+| `HAZLO_UNIFIED_REPARSE` | `false` | Enable unified reparse feature flag |
 
 LLM provider API keys are configured via `/admin/llm-providers` (encrypted in DB), not via env vars.
 
@@ -367,8 +491,14 @@ Settings class: `hazlo/settings.py` (Pydantic BaseSettings).
 |---------|------|---------|
 | postgres | 5433 | App + Prefect database |
 | redis | 6380 | Reserved for future caching (not currently used) |
+| hazlo | 8000 | FastAPI app (with `raw-data` volume mounted at `/data/raw`) |
 | prefect-server | 4200 | Prefect UI + API |
-| prefect-worker | — | Flow execution |
+| prefect-worker | — | Flow execution (shares `raw-data` volume with hazlo) |
+
+**Volumes:**
+- `postgres_data` — PostgreSQL data persistence
+- `redis_data` — Redis data persistence
+- `raw-data` — RAW event data storage (filesystem backend)
 
 Init script creates `prefect` database; `hazlo` database is created from `POSTGRES_DB` env var.
 
